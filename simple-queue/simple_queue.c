@@ -311,112 +311,123 @@ SimpleQueue SimpleQueue_create(int *error)
 
 void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 {
-    int recursive = 0;
-    while (1)
-    {
-        int errToSet = 0;
-        int hasQueueLock = 0;
-        int hasDictLock = recursive;
-        SimpleQueue queue = NULL;
-        QueueData *queue_data = NULL;
 
-        if (queuePtr == NULL || *queuePtr == NULL)
+    int errToSet = 0;
+    int hasQueueLock = 0;
+    int hasDictLock = 0;
+    SimpleQueue queue = NULL;
+    QueueData *queue_data = NULL;
+
+    if (queuePtr == NULL || *queuePtr == NULL)
+    {
+        errToSet = E_SQ_NO_QUEUE;
+    }
+    else
+    {
+        queue = *queuePtr;
+    }
+
+    if (!errToSet)
+    {
+        hasDictLock = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
+            errToSet = E_SQ_MUTEX_LOCK;
+            hasDictLock = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        // printf("queue: %p --- lista interna: %p\n", queue, internal_queues_data_list);
+        queue_data = searchByKey(internal_queues_data_list, queue);
+        if (queue_data == NULL)
         {
             errToSet = E_SQ_NO_QUEUE;
         }
-        else
-        {
-            queue = *queuePtr;
-        }
+    }
 
-        // se non e' ricorsiva possiedo gia' il dizionario
-        if (!errToSet && !recursive)
+    if (!errToSet)
+    {
+        if (queue_data->to_be_canceled_soon)
         {
-            hasDictLock = 1;
-            NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
+            errToSet = E_SQ_QUEUE_DELETED;
+        }
+    }
+
+    if (!errToSet)
+    {
+        if (!queue_data->to_be_canceled_soon)
+        {
+            hasQueueLock = 1;
+            NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
                 errToSet = E_SQ_MUTEX_LOCK;
-                hasDictLock = 0;
+                hasQueueLock = 0;
             })
         }
+    }
 
-        if (!errToSet)
-        {
-            // printf("queue: %p --- lista interna: %p\n", queue, internal_queues_data_list);
-            queue_data = searchByKey(internal_queues_data_list, queue);
-            if (queue_data == NULL)
-            {
-                errToSet = E_SQ_NO_QUEUE;
-            }
-        }
+    if (hasQueueLock)
+    {
+        queue_data->to_be_canceled_soon = 1;
 
-        if (!errToSet)
-        {
-            if (queue_data->to_be_canceled_soon && !recursive)
-            {
-                errToSet = E_SQ_QUEUE_DELETED;
-            }
-        }
+        // sveglio con broadcast tutti i lettori eventualmente fermi
+        NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
+            errToSet = E_SQ_MUTEX_LOCK;
+        })
 
-        if (!errToSet)
-        {
-            if (!queue_data->to_be_canceled_soon && !recursive)
-            {
-                hasQueueLock = 1;
-                NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-                    errToSet = E_SQ_MUTEX_LOCK;
-                    hasQueueLock = 0;
-                })
-            }
-        }
+        hasQueueLock = 0;
+        // lascio la lock sulla queue
+        NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
+            errToSet = E_SQ_MUTEX_LOCK;
+            hasQueueLock = 1;
+        })
+    }
+
+    int pmd_res = 0;
+    while (!errToSet && ((pmd_res = pthread_mutex_destroy(&(queue_data)->lock)) == EBUSY))
+    {
+        hasQueueLock = 1;
+        // lascio la possibilita' a thread fermi di accorgersi che stiamo chiudendo
+        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
+            errToSet = E_SQ_MUTEX_LOCK;
+            hasQueueLock = 0;
+        })
 
         if (hasQueueLock)
         {
-            queue_data->to_be_canceled_soon = 1;
-
-            // sveglio con broadcast tutti i lettori eventualmente fermi
-            NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
-                errToSet = E_SQ_MUTEX_LOCK;
-            })
-
+            hasQueueLock = 0;
             NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
                 errToSet = E_SQ_MUTEX_LOCK;
+                hasQueueLock = 1;
             })
         }
-
-        int pmd_res = 0;
-        if (!errToSet && ((pmd_res = pthread_mutex_destroy(&(queue_data)->lock)) == EBUSY))
-        {
-            // lascio la possibilita' a thread fermi di accorgersi che stiamo chiudendo
-            recursive = 1;
-            continue;
-        }
-
-        if (pmd_res != 0)
-        {
-            errToSet = E_SQ_MUTEX_LOCK;
-        }
-
-        if (errToSet != E_SQ_NO_QUEUE && (errToSet != E_SQ_QUEUE_DELETED || recursive))
-        {
-            free(queue_data);
-            deleteByKey(&internal_queues_data_list, queue);
-            List_free(&(*queuePtr)->queue);
-            free(*queuePtr);
-            *queuePtr = NULL;
-            // puts("!!! CANCELED !!!");
-            fflush(stdout);
-        }
-
-        if (hasDictLock)
-        {
-            NON_ZERO_DO(pthread_mutex_unlock(&iqdl_lock), {
-                errToSet = E_SQ_MUTEX_LOCK;
-            })
-        }
-
-        error && (*error = errToSet);
-        return;
     }
+
+    if (pmd_res != 0)
+    {
+        errToSet = E_SQ_MUTEX_LOCK;
+    }
+
+    if (errToSet != E_SQ_NO_QUEUE && errToSet != E_SQ_QUEUE_DELETED)
+    {
+        free(queue_data);
+        deleteByKey(&internal_queues_data_list, queue);
+        List_free(&(*queuePtr)->queue);
+        free(*queuePtr);
+        *queuePtr = NULL;
+        // puts("!!! CANCELED !!!");
+        fflush(stdout);
+    }
+
+    if (hasDictLock)
+    {
+        NON_ZERO_DO(pthread_mutex_unlock(&iqdl_lock), {
+            errToSet = E_SQ_MUTEX_LOCK;
+        })
+    }
+
+    error && (*error = errToSet);
+    return;
 }
 
 // -----------------------------------------------------------------------------
