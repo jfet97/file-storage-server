@@ -21,7 +21,7 @@ libsimple_queue.a: simple_queue.o
 
 simple_queue.o: simple_queue.c simple_queue.h
 
-main: ./main.c ../simple_queue.c
+main: ../simple_queue.c
 	$(CC) $(CFLAGS) $< -c -o $@
 
 clean:
