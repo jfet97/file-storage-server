@@ -32,6 +32,11 @@ typedef struct InternalListNode
     struct InternalListNode *next;
 } InternalListNode;
 
+struct ConfigParser
+{
+    InternalListNode *internal_list;
+};
+
 // -------------------------------
 // -------------------------------
 // INTERNALS
@@ -40,7 +45,7 @@ int insert(InternalListNode **listPtr, InternalListNode *newNode)
 {
     int codeToRet = 0;
 
-    if (listPtr && *listPtr && newNode)
+    if (listPtr && newNode)
     {
         newNode->next = *listPtr;
         *listPtr = newNode;
@@ -58,7 +63,7 @@ void forceFree(InternalListNode **listPtr)
     if (listPtr && *listPtr)
     {
         forceFree(&(*listPtr)->next);
-        free((*listPtr)->next);
+        free((*listPtr));
     }
 }
 
@@ -77,11 +82,6 @@ void *searchByKey(InternalListNode *list, const char *key)
         return searchByKey(list->next, key);
     }
 }
-
-struct ConfigParser
-{
-    InternalListNode *internal_list;
-};
 
 int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
 {
@@ -157,14 +157,24 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
                 char *state = NULL;
                 char *key = strtok_r(buf, ",", &state);
                 char *value = strtok_r(NULL, ",", &state);
+                char *end = strtok_r(NULL, ",", &state);
 
-                strncat(newNode->key, key, MAX_KEY_LEN);
-                strncat(newNode->value, value, MAX_VAL_LEN);
+                newNode->key[0] = '\0';
+                newNode->value[0] = '\0';
+
+                if (!key || !value || end)
+                {
+                    errToSet = E_CP_MALFORMED_FILE;
+                }
+                else
+                {
+                    strncat(newNode->key, key, MAX_KEY_LEN);
+                    strncat(newNode->value, value, MAX_VAL_LEN);
+                }
+
+                insert(&(parser->internal_list), newNode);
+                read_res = readLineFromFILE(buf, MAX_CONFIG_LEN, file);
             }
-
-            insert(&(parser->internal_list), newNode);
-
-            read_res = readLineFromFILE(buf, MAX_CONFIG_LEN, file);
         }
 
         if (read_res == -1)
@@ -234,6 +244,25 @@ char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, size_t len,
     return toRet;
 }
 
+void ConfigParser_printConfigs(ConfigParser parserPtr, int *error)
+{
+    int errToSet = 0;
+
+    if (parserPtr == NULL)
+    {
+        errToSet = E_CP_NULL;
+    }
+    else
+    {
+        for (InternalListNode *runner = parserPtr->internal_list; runner; runner = runner->next)
+        {
+            printf("key: %s --- value: %s\n", runner->key, runner->value);
+        }
+    }
+
+    error && (*error = errToSet);
+}
+
 const char *logger_error_messages[] = {
     "",
     "config parser internal malloc error",
@@ -241,6 +270,7 @@ const char *logger_error_messages[] = {
     "config parser is NULL",
     "config parser internal general error",
     "config parser has received wrong input",
+    "the config file is malformed",
 };
 
 const char *ConfigParser_getErrorMessage(int errorCode)
