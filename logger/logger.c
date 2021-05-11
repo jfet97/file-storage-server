@@ -368,12 +368,3 @@ inline const char *Logger_getErrorMessage(int errorCode)
 {
     return logger_error_messages[errorCode];
 }
-
-#define E_LOG_MALLOC 1
-#define E_LOG_FILE 2
-#define E_LOG_ERROR 3
-#define E_LOG_MUTEX 4
-#define E_LOG_WRONG_INPUT 5
-#define E_LOG_SINGLETON 6
-#define E_LOG_NULL 7
-#define E_LOG_TIME 8
