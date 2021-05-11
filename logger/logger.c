@@ -21,19 +21,19 @@
     }
 
 #define IS_NULL_DO(code, todo) \
-    if (code != 0)             \
+    if (code == NULL)             \
     {                          \
         todo;                  \
     }
 
 #define IS_NEGATIVE_DO(code, todo) \
-    if (code != 0)                 \
+    if (code < 0)                 \
     {                              \
         todo;                      \
     }
 
 #define IS_NEGATIVE_DO_ELSE(code, todo, el_se) \
-    if (code != 0)                             \
+    if (code < 0)                             \
     {                                          \
         todo;                                  \
     }                                          \
@@ -351,3 +351,29 @@ void Logger_flush(int *error)
 
     error && (*error = errToSet);
 }
+
+const char *logger_error_messages[] = {
+    "",
+    "log internal malloc error",
+    "log internal file error",
+    "log internal general error",
+    "log internal mutex lock error",
+    "log has received wrong input",
+    "log instance already exists",
+    "log is NULL",
+    "log internal time error",
+};
+
+inline const char *Logger_getErrorMessage(int errorCode)
+{
+    return logger_error_messages[errorCode];
+}
+
+#define E_LOG_MALLOC 1
+#define E_LOG_FILE 2
+#define E_LOG_ERROR 3
+#define E_LOG_MUTEX 4
+#define E_LOG_WRONG_INPUT 5
+#define E_LOG_SINGLETON 6
+#define E_LOG_NULL 7
+#define E_LOG_TIME 8

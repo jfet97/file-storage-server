@@ -19,4 +19,5 @@ void Logger_create(const char *path, int *error);
 void Logger_delete(int force_free, int *error);
 void Logger_log(const char *toLog, size_t len, int *error);
 void Logger_flush(int *error);
+const char *Logger_getErrorMessage(int errorCode);
 #endif
