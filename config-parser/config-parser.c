@@ -194,6 +194,7 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
     {
         parser ? forceFree(&(parser->internal_list)) : NULL;
         parser ? free(parser) : NULL;
+        parser = NULL;
     }
 
     error && (*error = errToSet);

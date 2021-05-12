@@ -127,6 +127,7 @@ void Logger_create(const char *path, int *error)
     {
         (logger && logger->log) ? free(logger->log) : NULL;
         logger ? free(logger) : NULL;
+        logger = NULL;
     }
 
     if (hasLoggerLock)
