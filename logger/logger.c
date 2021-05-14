@@ -13,6 +13,7 @@
 #define MAX_LOG_SIZE 131072
 #define MEDIUM_LOG_SIZE 16384
 #define INITIAL_LOG_SIZE 1024
+#define TIMESTAMP_LEN 26
 
 #define NON_ZERO_DO(code, todo) \
     if (code != 0)              \
@@ -197,11 +198,15 @@ void Logger_log(const char *toLog, size_t len, int *error)
     int errToSet = 0;
     int hasLoggerLock = 0;
     time_t ltime;
-    struct tm *local_time = NULL;
-    const char *timestamp = NULL;
+    struct tm *local_time = malloc(sizeof(*local_time));
+    char timestamp[26];
 
     IS_NULL_DO(logger, {
         errToSet = E_LOG_NULL;
+    })
+
+    IS_NULL_DO(local_time, {
+        errToSet = E_LOG_MALLOC;
     })
 
     if (!errToSet)
@@ -232,9 +237,8 @@ void Logger_log(const char *toLog, size_t len, int *error)
 
     if (!errToSet)
     {
-
-        local_time = localtime(&ltime);
-
+        errno = 0;
+        localtime_r(&ltime, local_time);
         NON_ZERO_DO(errno, {
             errToSet = E_LOG_TIME;
         })
@@ -242,7 +246,7 @@ void Logger_log(const char *toLog, size_t len, int *error)
 
     if (!errToSet)
     {
-        timestamp = asctime(local_time);
+        asctime_r(local_time, timestamp);
 
         IS_NULL_DO(timestamp, {
             errToSet = E_LOG_TIME;
@@ -251,7 +255,7 @@ void Logger_log(const char *toLog, size_t len, int *error)
 
     if (!errToSet)
     {
-        size_t timestamp_len = strnlen(timestamp, 26);
+        size_t timestamp_len = TIMESTAMP_LEN;
         size_t len_to_write = logger->curr_log_len + (len + timestamp_len + 2);
         size_t new_realloc_size = len_to_write * 1.6180339887;
         int do_cat = 0;
