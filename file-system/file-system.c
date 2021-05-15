@@ -29,19 +29,12 @@ struct File
     size_t size;
 
     // used by the filesystem client (i.e. the server) to store additional stuff regarding the file
-    void* metadata;
+    void *metadata;
 
     pthread_mutex_t mutex;
     pthread_mutex_t ordering;
     pthread_cond_t go;
 };
-
-void fileDeallocator(void* rawFilePointer) {
-    File file = rawFilePointer;
-
-    free(file->path);
-    free(file->data);
-}
 
 struct FileSystem
 {
@@ -80,9 +73,9 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
 
     if (!errToSet)
     {
-        // the list will be responsible of freeing the File entries,
+        // the filesDict is not directly responsible of freeing the File entries nor the string keys
         // others ops are not needed
-        fs->filesList = List_create(NULL, NULL, fileDeallocator, &errToSet);
+        fs->filesList = List_create(NULL, NULL, NULL, &errToSet);
     }
 
     if (!errToSet)
@@ -118,8 +111,7 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
     return fs;
 }
 
-
-void FileSystem_delete(FileSystem *fsPtr, int *error)
+void FileSystem_delete(FileSystem *fsPtr, int *error, void (*freeExtraDataEntry)(void *))
 {
     // precondition: it will be called when all but one threads have died => no mutex is required
 
@@ -136,9 +128,18 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
         fs = *fsPtr;
 
         // the filesDict is not responsible of freeing the File entries nor the string keys
-        fs && (fs->filesDict) ? icl_hash_destroy(fs->filesDict, NULL, NULL) : NULL;
-        // the list is
-        fs && (fs->filesList) ? List_free(&fs->filesList, 1, NULL) : NULL;
+        icl_hash_destroy(fs->filesDict, NULL, NULL);
+
+        // the list is, but it doesn't know how to free the additional metadata
+        while (List_length(fs->filesList, NULL))
+        {
+            File f = List_extractHead(fs->filesList, NULL);
+            free(f->path);
+            free(f->data);
+            freeExtraDataEntry(f->metadata);
+            free(f);
+        }
+        fs && (fs->filesList) ? List_free(&fs->filesList, 0, NULL) : NULL;
         fs ? free(fs) : NULL;
     }
 

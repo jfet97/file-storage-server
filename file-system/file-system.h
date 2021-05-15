@@ -13,4 +13,4 @@ typedef struct File* File;
 typedef struct FileSystem* FileSystem;
 
 FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int replacementPolicy, int* error);
-void FileSystem_delete(FileSystem *fsPtr, int *error);
+void FileSystem_delete(FileSystem *fsPtr, int *error, void (*freeExtraDataEntry)(void *));
