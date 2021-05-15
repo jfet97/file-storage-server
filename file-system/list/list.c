@@ -893,6 +893,33 @@ size_t List_length(T list, int *error)
 
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
+// FIND SOMETHING
+
+extern int List_search(T list, Comparator c, void *toFind, int *error)
+{
+    int errToSet = 0;
+    size_t found = 0;
+
+    if (list == NULL)
+    {
+        errToSet = E_LIST_NULL;
+    }
+    else
+    {
+        struct Node *runner = list->head;
+        while (runner != NULL && !found)
+        {
+            found = c(toFind, runner->element);
+            runner = runner->next;
+        }
+    }
+
+    SET_ERROR;
+    return found;
+}
+
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // REVERSE THE LIST
 
 static struct Node *List__reverse(struct Node *node)
@@ -1150,9 +1177,9 @@ const char *list_error_messages[] = {
     "list is null",
     "list cannot contain NULL elements",
     "list is empty",
-    "one or more arguments are invalid"
-};
+    "one or more arguments are invalid"};
 
-const char *List_getErrorMessage(int errorCode) {
+const char *List_getErrorMessage(int errorCode)
+{
     return list_error_messages[errorCode];
 }
