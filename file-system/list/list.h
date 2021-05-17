@@ -128,6 +128,9 @@ extern size_t List_length(T, int *);
 // find something known inside the list
 extern int List_search(T, Comparator, void*, int *);
 
+// extract something known from the list
+extern void* List_searchExtract(T, Comparator, void*, int *);
+
 // reverse the list
 extern void List_reverse(T, int *);
 

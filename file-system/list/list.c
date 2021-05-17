@@ -893,7 +893,7 @@ size_t List_length(T list, int *error)
 
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
-// FIND SOMETHING
+// FIND SOMETHING KNOWN
 
 extern int List_search(T list, Comparator c, void *toFind, int *error)
 {
@@ -916,6 +916,57 @@ extern int List_search(T list, Comparator c, void *toFind, int *error)
 
     SET_ERROR;
     return found;
+}
+
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+// FIND SOMETHING KNOWN
+
+extern void* List_searchExtract(T list, Comparator c, void *toFind, int *error)
+{
+    int errToSet = 0;
+    struct Node *nodeToExtract = NULL;
+    void *toRet = NULL;
+    size_t found = 0;
+
+    if (list == NULL)
+    {
+        errToSet = E_LIST_NULL;
+    }
+    else
+    {
+        struct Node *runner = list->head;
+        while (runner != NULL && !found)
+        {
+            found = c(toFind, runner->element);
+            nodeToExtract = runner;
+            runner = runner->next;
+        }
+    }
+
+    if (found)
+    {
+        if (nodeToExtract == list->head)
+        {
+            toRet = List_extractHead(list, &errToSet);
+        }
+        else if (nodeToExtract == list->tail)
+        {
+            toRet = List_extractTail(list, &errToSet);
+        }
+        else
+        {
+            toRet = nodeToExtract->element;
+            nodeToExtract->next->prev = nodeToExtract->prev;
+            nodeToExtract->prev->next = nodeToExtract->next;
+
+            Node_free(&nodeToExtract, 0);
+            list->length--;
+        }
+    }
+
+    SET_ERROR;
+    return toRet;
 }
 
 // -----------------------------------------------------------------------------
