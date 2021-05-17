@@ -43,10 +43,28 @@ struct File
 
 struct EvictedFile
 {
-    // also used as key for the FileSystem's files dict
     char *path;
     char *data;
     size_t size;
+};
+
+struct ResultFile
+{
+    char *path;
+    char *data;
+    size_t size;
+};
+
+struct ReadNFileSetResultFilesContext
+{
+    List_T resultFiles;
+    int counter;
+    OwnerId ownerId;
+};
+
+struct ReadNFileLRUContext
+{
+    List_T files;
 };
 
 void fileDeallocator(void *rawFile)
@@ -56,6 +74,13 @@ void fileDeallocator(void *rawFile)
     free(file->data);
     List_free(&file->currentlyLockedBy, 0, NULL);
     List_free(&file->waitingLockers, 0, NULL);
+}
+
+void fileResultDeallocator(void *rawFile)
+{
+    ResultFile file = rawFile;
+    free(file->path);
+    free(file->data);
 }
 
 struct FileSystem
@@ -79,6 +104,181 @@ int ownerIdComparator(void *rawO1, void *rawO2)
     OwnerId *o2 = rawO2;
 
     return o1->id == o2->id;
+}
+
+int filePathComparator(void *rawf1, void *rawf2)
+{
+    File f1 = rawf1;
+    File f2 = rawf2;
+
+    return strcmp(f1->path, f2->path) == 0;
+}
+
+void readNFiles(void *rawCtx, void *rawFile, int *error)
+{
+    // assumption: it has overall mutex
+
+    struct ReadNFileSetResultFilesContext *ctx = rawCtx;
+    struct ResultFile *resultFile = NULL;
+    File file = rawFile;
+
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    // skip locked files
+    int isLockedByOthers = 0;
+
+    if (ctx->counter <= 0 || *error)
+    {
+        return;
+    }
+    else
+    {
+        ctx->counter--;
+    }
+
+    if (!(*error))
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            *error = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!(*error))
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!(*error))
+    {
+        while (file->activeWriters > 0 || !(*error))
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                *error = E_FS_COND;
+            })
+        }
+    }
+
+    if (!(*error))
+    {
+        file->activeReaders++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            *error = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    // read
+
+    if (!(*error))
+    {
+        isLockedByOthers = file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ctx->ownerId.id;
+        if (isLockedByOthers)
+        {
+            ctx->counter++;
+        }
+    }
+
+    if (!(*error) && !isLockedByOthers)
+    {
+        resultFile = malloc(sizeof(*resultFile));
+        IS_NULL_DO(resultFile, { *error = E_FS_MALLOC; })
+    }
+
+    if (!(*error) && !isLockedByOthers)
+    {
+        resultFile->size = file->size;
+        resultFile->data = malloc(sizeof(*resultFile->data) * file->size);
+        resultFile->path = malloc(sizeof(*resultFile->path) * (strlen(file->path) + 1));
+        IS_NULL_DO(resultFile->data, { *error = E_FS_MALLOC; })
+        IS_NULL_DO(resultFile->path, { *error = E_FS_MALLOC; })
+    }
+
+    if (!(*error) && !isLockedByOthers)
+    {
+        memcpy(resultFile->data, file->data, file->size);
+        memcpy(resultFile->path, file->path, strlen(file->path) + 1);
+    }
+
+    if (!(*error) && !isLockedByOthers)
+    {
+        List_insertHead(ctx->resultFiles, resultFile, error);
+    }
+
+    if (!(*error))
+    {
+
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+
+        if (!(*error))
+        {
+            file->activeReaders--;
+            file->ownerCanWrite.id = 0;
+            if (file->activeReaders == 0)
+            {
+                NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                    *error = E_FS_COND;
+                })
+            };
+        }
+
+        if (hasMutex)
+        {
+            hasMutex = 0;
+
+            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+                *error = E_FS_MUTEX;
+                hasMutex = 1;
+            })
+        }
+    }
+
+    if (*error)
+    {
+        resultFile->data ? free(resultFile->data) : NULL;
+        resultFile->path ? free(resultFile->path) : NULL;
+        free(resultFile);
+    }
+}
+
+void moveFilesLRU(void *rawCtx, void *rawResultFile, int *error)
+{
+    // assumption: it has overall mutex
+    if (*error)
+    {
+        return;
+    }
+
+    struct ReadNFileLRUContext *ctx = rawCtx;
+    struct ResultFile *resultFile = rawResultFile;
+
+    struct File temp;
+    temp.path = resultFile->path;
+
+    List_insertHead(ctx->files, List_searchExtract(ctx->files, filePathComparator, &temp, NULL), error);
 }
 
 FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int replacementPolicy, int *error)
@@ -256,7 +456,7 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
         errToSet = E_FS_NULL_FS;
     }
 
-    if (path == NULL || (flags != O_CREATE && flags != O_LOCK && flags != O_CREATE | O_LOCK && flags != 0b0))
+    if (!errToSet && (path == NULL || (flags != O_CREATE && flags != O_LOCK && flags != O_CREATE | O_LOCK && flags != 0b0)))
     {
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
@@ -527,4 +727,269 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
 
     SET_ERROR;
     return evictedFile;
+}
+
+ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+{
+    // the client must have opened the file before
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    File file = NULL;
+    ResultFile resultFile = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (path == NULL)
+    {
+        errToSet = E_FS_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file = icl_hash_find(fs->filesDict, path);
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
+    }
+
+    if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct File temp;
+        temp.path = file->path;
+        List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+    }
+
+    if (!errToSet)
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (hasFSMutex)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (!errToSet)
+    {
+        while (file->activeWriters > 0 || !errToSet)
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                errToSet = E_FS_COND;
+            })
+        }
+    }
+
+    if (!errToSet)
+    {
+        file->activeReaders++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    if (!errToSet)
+    {
+        if (file->currentlyLockedBy.id != ownerId.id)
+        {
+            errToSet = E_FS_FILE_IS_LOCKED;
+        }
+    }
+
+    if (!errToSet)
+    {
+        int alreadyOpened = List_search(file->openedBy, List_getComparator(file->openedBy, NULL), &ownerId, &errToSet);
+        if (!alreadyOpened)
+        {
+            errToSet = E_FS_FILE_NOT_OPENED;
+        }
+    }
+
+    if (!errToSet)
+    {
+        resultFile = malloc(sizeof(*resultFile));
+        IS_NULL_DO(resultFile, { errToSet = E_FS_MALLOC; })
+    }
+
+    if (!errToSet)
+    {
+        resultFile->size = file->size;
+        resultFile->data = malloc(sizeof(*resultFile->data) * file->size);
+        IS_NULL_DO(resultFile->size, { errToSet = E_FS_MALLOC; })
+    }
+
+    if (!errToSet)
+    {
+        memcpy(resultFile->data, file->data, file->size);
+    }
+
+    if (!errToSet)
+    {
+        resultFile->path = malloc(sizeof(*resultFile->path) * (strlen(file->path) + 1));
+        IS_NULL_DO(resultFile->size, { errToSet = E_FS_MALLOC; })
+    }
+
+    if (!errToSet)
+    {
+        memcpy(resultFile->path, file->path, strlen(file->path) + 1);
+    }
+
+    if (!errToSet)
+    {
+
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+
+        if (!errToSet)
+        {
+            file->activeReaders--;
+            file->ownerCanWrite.id = 0;
+            if (file->activeReaders == 0)
+            {
+                NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                    errToSet = E_FS_COND;
+                })
+            };
+        }
+
+        if (hasMutex)
+        {
+            hasMutex = 0;
+
+            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+                errToSet = E_FS_MUTEX;
+                hasMutex = 1;
+            })
+        }
+    }
+
+    if (errToSet && resultFile)
+    {
+        resultFile->data ? free(resultFile->data) : NULL;
+        resultFile->path ? free(resultFile->path) : NULL;
+        free(resultFile);
+        resultFile = NULL;
+    }
+
+    SET_ERROR;
+    return resultFile;
+}
+
+List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
+{
+    int errToSet = 0;
+    int hasFSMutex = 0;
+
+    int counter = 0;
+    int filesListLen = 0;
+    List_T resultFiles = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        filesListLen = List_length(fs->filesList, &errToSet);
+    }
+
+    if (!errToSet)
+    {
+        counter = (N >= filesListLen || N <= 0) ? filesListLen : N;
+    }
+
+    if (!errToSet)
+    {
+        resultFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
+    }
+
+    if (!errToSet)
+    {
+        struct ReadNFileSetResultFilesContext ctx;
+        ctx.resultFiles = resultFiles;
+        ctx.counter = counter;
+        ctx.ownerId = ownerId;
+        List_forEachWithContext(fs->filesList, readNFiles, &ctx, &errToSet);
+    }
+
+    if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct ReadNFileLRUContext ctx;
+        ctx.files = fs->filesList;
+        List_forEachWithContext(resultFiles, moveFilesLRU, &ctx, &errToSet);
+    }
+
+    if (errToSet)
+    {
+        resultFiles ? List_free(&resultFiles, 0, NULL) : NULL;
+        resultFiles = NULL;
+    }
+
+    if (hasFSMutex)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    SET_ERROR;
+    return resultFiles;
 }
