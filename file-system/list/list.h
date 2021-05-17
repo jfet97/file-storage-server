@@ -54,6 +54,7 @@ typedef int (*Predicate)(void *);
 // used to do something to each entity
 // the ForEachCallback function SHOULD NEVER free the element itself
 typedef void (*ForEachCallback)(void *, int *);
+typedef void (*ForEachCallbackWithContext)(void *, void *, int *);
 
 // create a new generic list
 extern T List_create(Comparator, Duplicator, Deallocator, int *);
@@ -126,10 +127,10 @@ extern int List_all(T, Predicate, int *);
 extern size_t List_length(T, int *);
 
 // find something known inside the list
-extern int List_search(T, Comparator, void*, int *);
+extern int List_search(T, Comparator, void *, int *);
 
 // extract something known from the list
-extern void* List_searchExtract(T, Comparator, void*, int *);
+extern void *List_searchExtract(T, Comparator, void *, int *);
 
 // reverse the list
 extern void List_reverse(T, int *);
@@ -141,6 +142,7 @@ extern T List_map(T, Projection, Comparator, Duplicator, Deallocator, int *);
 extern T List_filter(T, Predicate, int, int *);
 
 extern void List_forEach(T, ForEachCallback, int *);
+void List_forEachWithContext(T, ForEachCallbackWithContext, void *, int *);
 
 extern void List_forEach_right(T, ForEachCallback, int *);
 

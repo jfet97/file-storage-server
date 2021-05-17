@@ -1198,6 +1198,30 @@ void List_forEach(T list, ForEachCallback callback, int *error)
     }
 }
 
+void List_forEachWithContext(T list, ForEachCallbackWithContext callback, void* context, int *error)
+{
+    int errToSet = 0;
+    if (list == NULL)
+    {
+        errToSet = E_LIST_NULL;
+    }
+
+    if (!errToSet && (callback == NULL || context == NULL))
+    {
+        errToSet = E_LIST_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        struct Node *runner = list->head;
+        while (runner != NULL && !errToSet)
+        {
+            callback(context, runner->element, &errToSet);
+            runner = !errToSet ? runner->next : NULL;
+        }
+    }
+}
+
 void List_forEach_right(T list, ForEachCallback callback, int *error)
 {
     int errToSet = 0;
