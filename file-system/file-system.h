@@ -41,5 +41,5 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error);
 List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error);
 void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
-void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
+OwnerId* FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);

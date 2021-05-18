@@ -1440,7 +1440,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     SET_ERROR;
 }
 
-void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
     // is caller responsibility to free path
 
@@ -1452,6 +1452,7 @@ void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     int hasOrdering = 0;
     int notLocked = 0;
     int lockedByOthers = 0;
+    OwnerId *oidToRet = NULL;
     File file = NULL;
 
     if (fs == NULL)
@@ -1563,7 +1564,23 @@ void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
         if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
         {
-            file->currentlyLockedBy.id = 0;
+            int listLength = List_length(file->waitingLockers, &errToSet);
+            int lockedOwnerToSet = 0;
+
+            if (!errToSet && listLength >= 1)
+            {
+                oidToRet = List_extractHead(file->waitingLockers, &errToSet);
+                if (!errToSet)
+                {
+                    lockedOwnerToSet = oidToRet->id;
+                }
+                else
+                {
+                    oidToRet = NULL;
+                }
+            }
+
+            file->currentlyLockedBy.id = lockedOwnerToSet;
         }
 
         if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
@@ -1620,4 +1637,5 @@ void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     }
 
     SET_ERROR;
+    return oidToRet;
 }
