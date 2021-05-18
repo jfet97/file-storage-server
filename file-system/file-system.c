@@ -263,8 +263,6 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         }
     }
 
-
-
     if (hasMutex)
     {
         hasMutex = 0;
@@ -1352,11 +1350,6 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
 
-        if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
-        {
-            errToSet = E_FS_FILE_NOT_OPENED;
-        }
-
         if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
         {
 
@@ -1745,18 +1738,19 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
+        int lockedByOthers = (file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0);
 
         if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
         {
             errToSet = E_FS_FILE_NOT_OPENED;
         }
 
-        if (!errToSet && file->currentlyLockedBy.id != 0)
+        if (!errToSet && lockedByOthers)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
 
-        if (!errToSet && file->currentlyLockedBy.id == 0)
+        if (!errToSet && !lockedByOthers)
         {
             OwnerId *ext = List_findExtract(file->openedBy, ownerIdComparator, &errToSet);
             if (!errToSet)
