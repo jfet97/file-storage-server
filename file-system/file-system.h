@@ -43,3 +43,4 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
 void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 OwnerId* FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
+void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);

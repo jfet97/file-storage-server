@@ -388,7 +388,7 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
     SET_ERROR;
 }
 
-ResultFile FileSystem_evict(FileSystem fs, int *error)
+ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 {
     // precondition: it will be called having the overallMutex and with a valid fs
     // the file list is not empty
@@ -396,8 +396,19 @@ ResultFile FileSystem_evict(FileSystem fs, int *error)
     int errToSet = 0;
     int hasMutex = 0;
     int hasOrdering = 1;
-    File file = List_extractTail(fs->filesList, &errToSet);
+    File file = NULL;
     ResultFile evictedFile = NULL;
+
+    if (path)
+    {
+        struct File temp;
+        temp.path = path;
+        file = List_searchExtract(fs->filesList, filePathComparator, &temp, &errToSet);
+    }
+    else
+    {
+        file = List_extractTail(fs->filesList, &errToSet);
+    }
 
     if (!errToSet)
     {
@@ -511,7 +522,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (fs->currentNumOfFiles == fs->maxNumOfFiles)
         {
-            evictedFile = FileSystem_evict(fs, &errToSet);
+            evictedFile = FileSystem_evict(fs, NULL, &errToSet);
         }
 
         if (!errToSet)
@@ -1146,7 +1157,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     // do stuff if it is all alright
     if (!errToSet)
     {
-        if (file->currentlyLockedBy.id != ownerId.id)
+        if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
@@ -1169,7 +1180,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
 
         while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize))
         {
-            ResultFile evicted = FileSystem_evict(fs, &errToSet);
+            ResultFile evicted = FileSystem_evict(fs, NULL, &errToSet);
             if (!errToSet)
             {
                 List_insertHead(evictedFiles, evicted, &errToSet);
@@ -1350,7 +1361,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
 
-        if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
+        if (!errToSet && file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0)
         {
 
             OwnerId *oid = malloc(sizeof(*oid));
@@ -1366,6 +1377,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
                 if (!errToSet && present)
                 {
+                    // non dovrebbe essere possibile perché il client attende la lock senza fare ulteriori richieste
                     errToSet = E_FS_FILE_ALREADY_LOCKED;
                 }
 
@@ -1443,7 +1455,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
 OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path
+    // is caller responsibility to free path and the owner id returned
 
     int errToSet = 0;
     int hasFSMutex = 0;
@@ -1549,11 +1561,6 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
 
-        if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
-        {
-            errToSet = E_FS_FILE_NOT_OPENED;
-        }
-
         if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
@@ -1639,8 +1646,6 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int insertedIntoList = 0;
-    int insertedIntoDict = 0;
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
@@ -1738,19 +1743,20 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
-        int lockedByOthers = (file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0);
+        // int lockedByOthers = (file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0);
 
         if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
         {
             errToSet = E_FS_FILE_NOT_OPENED;
         }
 
-        if (!errToSet && lockedByOthers)
-        {
-            errToSet = E_FS_FILE_IS_LOCKED;
-        }
+        // if (!errToSet && lockedByOthers)
+        // {
+        //     errToSet = E_FS_FILE_IS_LOCKED;
+        // }
 
-        if (!errToSet && !lockedByOthers)
+        // if (!errToSet && !lockedByOthers)
+        if (!errToSet)
         {
             OwnerId *ext = List_findExtract(file->openedBy, ownerIdComparator, &errToSet);
             if (!errToSet)
@@ -1793,6 +1799,111 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
             errToSet = E_FS_MUTEX;
             hasMutex = 1;
         })
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    SET_ERROR;
+}
+
+void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+{
+    // is caller responsibility to free path
+
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int errToSet = 0;
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    File file = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet && (path == NULL))
+    {
+        errToSet = E_FS_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file = icl_hash_find(fs->filesDict, path);
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
+    }
+
+    if (!errToSet)
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+    {
+        NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+            errToSet = E_FS_COND;
+        })
+    }
+
+    if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
+    {
+        errToSet = E_FS_FILE_IS_LOCKED;
+    }
+
+    if (!errToSet && file->currentlyLockedBy.id == 0)
+    {
+        errToSet = E_FS_FILE_NOT_LOCKED;
+    }
+
+    if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
+    {
+        struct File temp;
+        temp.path = path;
+        file = List_searchExtract(fs->filesList, filePathComparator, &temp, &errToSet);
+    }
+
+    if (!errToSet)
+    {
+        // remove the file from the dict as well
+        icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
+        // update fs
+        fs->currentNumOfFiles--;
+        fs->currentStorageSize -= file->size;
+
+        free(file->data);
+        free(file->path);
+        List_free(file->openedBy, 1, NULL);
+        List_free(file->waitingLockers, 1, NULL);
+        free(file);
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
