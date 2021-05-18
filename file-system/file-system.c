@@ -243,28 +243,29 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
             *error = E_FS_MUTEX;
             hasMutex = 0;
         })
+    }
 
-        if (!(*error))
+    if (!(*error) || !(*error) == E_FS_MALLOC)
+    {
+        file->activeReaders--;
+        file->ownerCanWrite.id = 0;
+
+        if (file->activeReaders == 0)
         {
-            file->activeReaders--;
-            file->ownerCanWrite.id = 0;
-            if (file->activeReaders == 0)
-            {
-                NON_ZERO_DO(pthread_cond_signal(&file->go), {
-                    *error = E_FS_COND;
-                })
-            };
-        }
-
-        if (hasMutex)
-        {
-            hasMutex = 0;
-
-            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-                *error = E_FS_MUTEX;
-                hasMutex = 1;
+            NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                *error = E_FS_COND;
             })
-        }
+        };
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 1;
+        })
     }
 
     if (*error)
@@ -723,7 +724,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             })
         }
 
-        if (!errToSet)
+        if (!errToSet || errToSet == E_FS_FILE_IS_LOCKED || errToSet == E_FS_MALLOC)
         {
             file->activeWriters--;
         }
@@ -910,34 +911,36 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
-
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
             errToSet = E_FS_MUTEX;
             hasMutex = 0;
         })
+    }
 
-        if (!errToSet)
+    if (!errToSet ||
+        errToSet == E_FS_FILE_IS_LOCKED ||
+        errToSet == E_FS_FILE_NOT_OPENED ||
+        errToSet == E_FS_MALLOC)
+    {
+        file->activeReaders--;
+        file->ownerCanWrite.id = 0;
+        if (file->activeReaders == 0)
         {
-            file->activeReaders--;
-            file->ownerCanWrite.id = 0;
-            if (file->activeReaders == 0)
-            {
-                NON_ZERO_DO(pthread_cond_signal(&file->go), {
-                    errToSet = E_FS_COND;
-                })
-            };
-        }
-
-        if (hasMutex)
-        {
-            hasMutex = 0;
-
-            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-                errToSet = E_FS_MUTEX;
-                hasMutex = 1;
+            NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                errToSet = E_FS_COND;
             })
-        }
+        };
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
     }
 
     if (errToSet && resultFile)
@@ -1034,7 +1037,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     int insertedIntoList = 0;
     int insertedIntoDict = 0;
     int hasMutex = 0;
-    int hasOrdering = 1;
+    int hasOrdering = 0;
     File file = NULL;
     List_T evictedFiles = NULL;
 
@@ -1065,12 +1068,12 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
-        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND;  })
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
-
 
     if (!errToSet)
     {
+        hasOrdering = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
             errToSet = E_FS_MUTEX;
             hasOrdering = 0;
@@ -1141,29 +1144,35 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             errToSet = E_FS_FILE_NO_WRITE;
         }
 
-        if(!errToSet) {
+        if (!errToSet)
+        {
             OwnerId _ownerId;
             _ownerId.id = ownerId.id;
 
-            if(!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL)) {
+            if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
+            {
                 errToSet = E_FS_FILE_NOT_OPENED;
             }
         }
 
-        while(!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize)) {
+        while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize))
+        {
             ResultFile evicted = FileSystem_evict(fs, &errToSet);
-            if(!errToSet) {
+            if (!errToSet)
+            {
                 List_insertHead(evictedFiles, evicted, &errToSet);
             }
         }
 
-        if(!errToSet) {
+        if (!errToSet)
+        {
             NON_ZERO_DO(realloca(&file->data, file->size + contentSize), {
                 errToSet = E_FS_MALLOC;
-            })  
+            })
         }
 
-        if(!errToSet) {
+        if (!errToSet)
+        {
             memcpy(file->data + file->size, content, contentSize);
             file->size += contentSize;
             fs->currentStorageSize += contentSize;
@@ -1187,7 +1196,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         })
     }
 
-    if (!errToSet)
+    if (!errToSet || errToSet == E_FS_MALLOC || errToSet == E_FS_FILE_NOT_OPENED || errToSet == E_FS_FILE_IS_LOCKED || errToSet == E_FS_FILE_NO_WRITE)
     {
         file->activeWriters--;
     }
@@ -1204,11 +1213,10 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             hasMutex = 1;
         })
     }
-     
 
     if (errToSet)
-    { 
-       evictedFiles ? List_free(evictedFiles, 1, NULL) : NULL;
+    {
+        evictedFiles ? List_free(evictedFiles, 1, NULL) : NULL;
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
@@ -1220,7 +1228,396 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         })
     }
 
-
     SET_ERROR;
     return evictedFiles;
+}
+
+void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+{
+    // is caller responsibility to free path
+
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int insertedIntoList = 0;
+    int insertedIntoDict = 0;
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    int alreadyLockedByMe = 0;
+    int alreadyLockedByOthers = 0;
+    File file = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet && (path == NULL))
+    {
+        errToSet = E_FS_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file = icl_hash_find(fs->filesDict, path);
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
+    }
+
+    if (!errToSet)
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (!errToSet)
+    {
+        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                errToSet = E_FS_COND;
+            })
+        }
+    }
+
+    if (!errToSet)
+    {
+        file->activeWriters++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    // do stuff if it is all alright
+    if (!errToSet)
+    {
+
+        OwnerId _ownerId;
+        _ownerId.id = ownerId.id;
+
+        if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
+        {
+            errToSet = E_FS_FILE_NOT_OPENED;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
+        {
+
+            alreadyLockedByOthers = 1;
+            OwnerId *oid = malloc(sizeof(*oid));
+            if (oid)
+            {
+                oid->id = ownerId.id;
+                int present = List_search(file->waitingLockers, ownerIdComparator, oid, &errToSet);
+
+                if (!errToSet && !present)
+                {
+                    List_insertTail(file->waitingLockers, oid, &errToSet);
+                }
+
+                if (!errToSet && present)
+                {
+                    alreadyLockedByMe = 1;
+                }
+
+                if (errToSet)
+                {
+                    free(oid);
+                }
+            }
+            else
+            {
+                errToSet = E_FS_MALLOC;
+            }
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
+        {
+            alreadyLockedByMe = 1;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id == 0)
+        {
+            file->currentlyLockedBy.id = ownerId.id;
+        }
+
+        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+        {
+            struct File temp;
+            temp.path = file->path;
+            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        }
+    }
+
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet || errToSet == E_FS_MALLOC || errToSet == E_FS_FILE_NOT_OPENED)
+    {
+        file->activeWriters--;
+    }
+
+    if (hasMutex)
+    {
+        NON_ZERO_DO(pthread_cond_signal(&file->go), {
+            errToSet = E_FS_COND;
+        })
+
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (alreadyLockedByMe)
+    {
+        errToSet = E_FS_FILE_ALREADY_LOCKED;
+    }
+    if (alreadyLockedByOthers)
+    {
+        errToSet = E_FS_FILE_IS_LOCKED;
+    }
+
+    SET_ERROR;
+}
+
+void FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+{
+    // is caller responsibility to free path
+
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int insertedIntoList = 0;
+    int insertedIntoDict = 0;
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    int notLocked = 0;
+    int lockedByOthers = 0;
+    File file = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet && (path == NULL))
+    {
+        errToSet = E_FS_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file = icl_hash_find(fs->filesDict, path);
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
+    }
+
+    if (!errToSet)
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (!errToSet)
+    {
+        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                errToSet = E_FS_COND;
+            })
+        }
+    }
+
+    if (!errToSet)
+    {
+        file->activeWriters++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    // do stuff if it is all alright
+    if (!errToSet)
+    {
+
+        OwnerId _ownerId;
+        _ownerId.id = ownerId.id;
+
+        if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
+        {
+            errToSet = E_FS_FILE_NOT_OPENED;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
+        {
+            lockedByOthers = 1;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id == 0)
+        {
+            notLocked = 1;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
+        {
+            file->currentlyLockedBy.id = 0;
+        }
+
+        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+        {
+            struct File temp;
+            temp.path = file->path;
+            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        }
+    }
+
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet || errToSet == E_FS_MALLOC || errToSet == E_FS_FILE_NOT_OPENED)
+    {
+        file->activeWriters--;
+    }
+
+    if (hasMutex)
+    {
+        NON_ZERO_DO(pthread_cond_signal(&file->go), {
+            errToSet = E_FS_COND;
+        })
+
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (lockedByOthers)
+    {
+        errToSet = E_FS_FILE_IS_LOCKED;
+    }
+    if (notLocked)
+    {
+        errToSet = E_FS_FILE_NOT_LOCKED;
+    }
+
+    SET_ERROR;
 }
