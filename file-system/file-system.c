@@ -1,5 +1,6 @@
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stddef.h>
 #include <string.h>
 #include "file-system.h"
@@ -39,13 +40,6 @@ struct File
     pthread_mutex_t mutex;
     pthread_mutex_t ordering;
     pthread_cond_t go;
-};
-
-struct EvictedFile
-{
-    char *path;
-    char *data;
-    size_t size;
 };
 
 struct ResultFile
@@ -112,6 +106,23 @@ int filePathComparator(void *rawf1, void *rawf2)
     File f2 = rawf2;
 
     return strcmp(f1->path, f2->path) == 0;
+}
+
+int realloca(char **buf, size_t newsize)
+{
+    int toRet = 0;
+
+    void *newbuff = realloc(*buf, newsize);
+    if (newbuff == NULL)
+    {
+        toRet = -1;
+    }
+    else
+    {
+        *buf = newbuff;
+    }
+
+    return toRet;
 }
 
 void readNFiles(void *rawCtx, void *rawFile, int *error)
@@ -371,7 +382,7 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
     SET_ERROR;
 }
 
-EvictedFile FileSystem_evict(FileSystem fs, int *error)
+ResultFile FileSystem_evict(FileSystem fs, int *error)
 {
     // precondition: it will be called having the overallMutex and with a valid fs
     // the file list is not empty
@@ -380,7 +391,7 @@ EvictedFile FileSystem_evict(FileSystem fs, int *error)
     int hasMutex = 0;
     int hasOrdering = 1;
     File file = List_extractTail(fs->filesList, &errToSet);
-    EvictedFile evictedFile = NULL;
+    ResultFile evictedFile = NULL;
 
     if (!errToSet)
     {
@@ -438,9 +449,9 @@ EvictedFile FileSystem_evict(FileSystem fs, int *error)
     return evictedFile;
 }
 
-EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
+ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
 {
-    // if something goes wrong is caller responsibility to free path
+    // is caller responsibility to free path
     int errToSet = 0;
     int hasFSMutex = 0;
     int insertedIntoList = 0;
@@ -449,7 +460,7 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
     int createFlag = flags & O_CREATE;
     int lockFlag = flags & O_LOCK;
     File file = NULL;
-    EvictedFile evictedFile = NULL;
+    ResultFile evictedFile = NULL;
 
     if (fs == NULL)
     {
@@ -508,7 +519,8 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
 
         if (!errToSet)
         {
-            file->path = path;
+            file->data = NULL;
+            file->size = 0;
             file->activeReaders = 0;
             file->activeWriters = 0;
             file->openedBy = List_create(ownerIdComparator, NULL, NULL, &errToSet);
@@ -516,6 +528,13 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
 
         if (!errToSet)
         {
+            file->path = malloc(sizeof(*file->path) * (strlen(path) + 1));
+            IS_NULL_DO(file->path, { errToSet = E_FS_MALLOC; })
+        }
+
+        if (!errToSet)
+        {
+            strcpy(file->path, path);
             file->waitingLockers = List_create(ownerIdComparator, NULL, NULL, &errToSet);
         }
 
@@ -573,6 +592,13 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
         {
             List_deleteHead(fs->filesList, NULL);
         }
+
+        file && file->path ? free(file->path) : NULL;
+        file && file->openedBy ? List_free(&file->openedBy, 0, NULL) : NULL;
+        file && file->waitingLockers ? List_free(&file->waitingLockers, 0, NULL) : NULL;
+        // TODO: valutare se reinserire dentro il file evictato o no
+        file ? free(file) : NULL;
+        file = NULL;
     }
 
     if (!errToSet)
@@ -725,6 +751,10 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
         })
     }
 
+    if (errToSet)
+    {
+    }
+
     SET_ERROR;
     return evictedFile;
 }
@@ -732,6 +762,7 @@ EvictedFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ow
 ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
     // the client must have opened the file before
+    // is caller responsibility to free path
     int errToSet = 0;
     int hasFSMutex = 0;
     int hasMutex = 0;
@@ -992,4 +1023,204 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
 
     SET_ERROR;
     return resultFiles;
+}
+
+List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error)
+{
+    // is caller responsibility to free path and content
+
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int insertedIntoList = 0;
+    int insertedIntoDict = 0;
+    int hasMutex = 0;
+    int hasOrdering = 1;
+    File file = NULL;
+    List_T evictedFiles = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet && (path == NULL || content == NULL || contentSize == 0))
+    {
+        errToSet = E_FS_INVALID_ARGUMENTS;
+    }
+
+    if (!errToSet)
+    {
+        evictedFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file = icl_hash_find(fs->filesDict, path);
+        IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND;  })
+    }
+
+
+    if (!errToSet)
+    {
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    if (!errToSet)
+    {
+        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                errToSet = E_FS_COND;
+            })
+        }
+    }
+
+    if (!errToSet)
+    {
+        file->activeWriters++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            errToSet = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    // do stuff if it is all alright
+    if (!errToSet)
+    {
+        if (file->currentlyLockedBy.id != ownerId.id)
+        {
+            errToSet = E_FS_FILE_IS_LOCKED;
+        }
+
+        if (!errToSet && write && file->ownerCanWrite.id != ownerId.id)
+        {
+            errToSet = E_FS_FILE_NO_WRITE;
+        }
+
+        if(!errToSet) {
+            OwnerId _ownerId;
+            _ownerId.id = ownerId.id;
+
+            if(!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL)) {
+                errToSet = E_FS_FILE_NOT_OPENED;
+            }
+        }
+
+        while(!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize)) {
+            ResultFile evicted = FileSystem_evict(fs, &errToSet);
+            if(!errToSet) {
+                List_insertHead(evictedFiles, evicted, &errToSet);
+            }
+        }
+
+        if(!errToSet) {
+            NON_ZERO_DO(realloca(&file->data, file->size + contentSize), {
+                errToSet = E_FS_MALLOC;
+            })  
+        }
+
+        if(!errToSet) {
+            memcpy(file->data + file->size, content, contentSize);
+            file->size += contentSize;
+            fs->currentStorageSize += contentSize;
+            file->ownerCanWrite.id = 0;
+        }
+
+        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+        {
+            struct File temp;
+            temp.path = file->path;
+            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        }
+    }
+
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!errToSet)
+    {
+        file->activeWriters--;
+    }
+
+    if (hasMutex)
+    {
+        NON_ZERO_DO(pthread_cond_signal(&file->go), {
+            errToSet = E_FS_COND;
+        })
+
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            errToSet = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+     
+
+    if (errToSet)
+    { 
+       evictedFiles ? List_free(evictedFiles, 1, NULL) : NULL;
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+
+    SET_ERROR;
+    return evictedFiles;
 }
