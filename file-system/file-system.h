@@ -19,6 +19,7 @@
 #define E_FS_FILE_NO_WRITE 24
 #define E_FS_FILE_NOT_LOCKED 25
 #define E_FS_FILE_ALREADY_LOCKED 26
+#define E_FS_RESULTFILE_IS_NULL 27
 
 #define FS_REPLACEMENT_FIFO 100
 #define FS_REPLACEMENT_LRU 101
@@ -45,3 +46,4 @@ OwnerId* FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error);
+void ResultFile_free(ResultFile* rfPtr, int* error);

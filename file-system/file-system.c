@@ -2069,3 +2069,24 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
 
     SET_ERROR;
 }
+
+void ResultFile_free(ResultFile *rfPtr, int *error)
+{
+    int errToSet = 0;
+
+    IS_NULL_DO(rfPtr, errToSet = E_FS_RESULTFILE_IS_NULL);
+
+    if (!errToSet)
+    {
+        IS_NULL_DO(*rfPtr, errToSet = E_FS_RESULTFILE_IS_NULL);
+    }
+
+    if (!errToSet)
+    {
+        free((*rfPtr)->data);
+        free((*rfPtr)->path);
+        *rfPtr = NULL;
+    }
+
+    SET_ERROR
+}
