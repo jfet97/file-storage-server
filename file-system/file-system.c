@@ -108,6 +108,117 @@ int filePathComparator(void *rawf1, void *rawf2)
     return strcmp(f1->path, f2->path) == 0;
 }
 
+int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
+{
+    // precondition: has overall mutex
+
+    OwnerId *oid = rawOwnerId;
+    OwnerId *oidToFree = NULL;
+    File file = rawFile;
+    int hasMutex = 0;
+    int hasOrdering = 0;
+
+    if (!(*error))
+    {
+        hasOrdering = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
+            *error = E_FS_MUTEX;
+            hasOrdering = 0;
+        })
+    }
+
+    if (!(*error))
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if (!(*error))
+    {
+        while (file->activeReaders > 0 || file->activeWriters > 0 || !(*error))
+        {
+            NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
+                *error = E_FS_COND;
+            })
+        }
+    }
+
+    if (!(*error))
+    {
+        file->activeWriters++;
+    }
+
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
+            *error = E_FS_MUTEX;
+            hasOrdering = 1;
+        })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+
+    if (!(*error))
+    {
+        if (file->currentlyLockedBy.id == oid->id)
+        {
+            file->currentlyLockedBy.id == 0;
+        }
+        if (file->ownerCanWrite.id == oid->id)
+        {
+            file->ownerCanWrite.id == 0;
+        }
+
+        oidToFree = List_searchExtract(file->openedBy, ownerIdComparator, &oid, error);
+    }
+
+    if (!(*error))
+    {
+        oidToFree ? free(oidToFree) : NULL;
+        oidToFree = NULL;
+        oidToFree = List_searchExtract(file->waitingLockers, ownerIdComparator, &oid, error);
+    }
+
+    if (!(*error))
+    {
+        oidToFree ? free(oidToFree) : NULL;
+    }
+
+    if (!(*error))
+    {
+        hasMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 0;
+        })
+    }
+
+    if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
+    {
+        file->activeWriters--;
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
+            *error = E_FS_MUTEX;
+            hasMutex = 1;
+        })
+    }
+}
+
 int realloca(char **buf, size_t newsize)
 {
     int toRet = 0;
@@ -1816,6 +1927,8 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
     // is caller responsibility to free path
+    // tengo la lock globale perche' devo distruggere le mutex del file e non voglio che altri thread
+    // siano in attesa su esse
 
     int errToSet = 0;
     int hasFSMutex = 0;
@@ -1905,6 +2018,45 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         List_free(file->waitingLockers, 1, NULL);
         free(file);
     }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 1;
+        })
+    }
+
+    SET_ERROR;
+}
+
+void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
+{
+
+    // tengo la lock globale per evitare modifiche indesiderate alle strutture
+    // del file system che potrebbero portare a saltare file e/o peggiori errori
+    // nell'iterazione
+
+    int errToSet = 0;
+    int hasFSMutex = 0;
+    int errToSet = 0;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet)
+    {
+        hasFSMutex = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
+            errToSet = E_FS_MUTEX;
+            hasFSMutex = 0;
+        })
+    }
+
+    List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
