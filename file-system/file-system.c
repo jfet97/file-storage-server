@@ -2090,3 +2090,28 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
 
     SET_ERROR
 }
+
+const char *filesystem_error_messages[] = {
+    "filesystem internal malloc error",
+    "filesystem is null",
+    "filesystem general error",
+    "filesystem internal mutex error",
+    "filesystem internal cond error",
+    "filesystem too many files",
+    "filesystem size overflow",
+    "filesystem invalid arguments",
+    "filesystem file already present",
+    "filesystem file not found",
+    "filesystem file is locked",
+    "filesystem file not opened",
+    "filesystem file write is forbidden, use append instead",
+    "filesystem file is not locked",
+    "filesystem file already locked",
+    "filesystem result-file is null",
+
+};
+
+const char *FileSystem_getErrorMessage(int errorCode)
+{
+    return filesystem_error_messages[errorCode - 11];
+}

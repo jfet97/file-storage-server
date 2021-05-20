@@ -47,3 +47,4 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error);
 void ResultFile_free(ResultFile* rfPtr, int* error);
+const char *FileSystem_getErrorMessage(int errorCode);
