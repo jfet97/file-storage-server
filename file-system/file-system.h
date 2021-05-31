@@ -1,7 +1,8 @@
 #include <stddef.h>
+#include "list.h"
 
-#define O_CREATE 0b01
-#define O_LOCK 0b10
+#define O_CREATE 0x01
+#define O_LOCK 0x02
 
 #define E_FS_MALLOC 11
 #define E_FS_NULL_FS 12
@@ -20,6 +21,7 @@
 #define E_FS_FILE_NOT_LOCKED 25
 #define E_FS_FILE_ALREADY_LOCKED 26
 #define E_FS_RESULTFILE_IS_NULL 27
+#define E_FS_FAILED_EVICT 28
 
 #define FS_REPLACEMENT_FIFO 100
 #define FS_REPLACEMENT_LRU 101

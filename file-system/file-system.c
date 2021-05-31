@@ -66,8 +66,8 @@ void fileDeallocator(void *rawFile)
     File file = rawFile;
     free(file->path);
     free(file->data);
-    List_free(&file->currentlyLockedBy, 0, NULL);
-    List_free(&file->waitingLockers, 0, NULL);
+    List_free(&(file->waitingLockers), 0, NULL);
+    List_free(&(file->openedBy), 0, NULL);
 }
 
 void fileResultDeallocator(void *rawFile)
@@ -108,7 +108,7 @@ int filePathComparator(void *rawf1, void *rawf2)
     return strcmp(f1->path, f2->path) == 0;
 }
 
-int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
+void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 {
     // precondition: has overall mutex
 
@@ -121,19 +121,21 @@ int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     if (!(*error))
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            *error = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!(*error))
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!(*error))
@@ -154,19 +156,21 @@ int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            *error = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (!(*error))
@@ -185,23 +189,24 @@ int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 
     if (!(*error))
     {
-        oidToFree ? free(oidToFree) : NULL;
+        (oidToFree ? free(oidToFree) : (void)NULL);
         oidToFree = NULL;
         oidToFree = List_searchExtract(file->waitingLockers, ownerIdComparator, &oid, error);
     }
 
     if (!(*error))
     {
-        oidToFree ? free(oidToFree) : NULL;
+        (oidToFree ? free(oidToFree) : (void)NULL);
     }
 
     if (!(*error))
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
@@ -212,10 +217,11 @@ int evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 }
 
@@ -262,19 +268,21 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     if (!(*error))
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            *error = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!(*error))
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!(*error))
@@ -296,19 +304,21 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            *error = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // read
@@ -352,10 +362,11 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     {
 
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
@@ -378,16 +389,17 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     {
         hasMutex = 0;
 
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            *error = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        *error = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (*error)
     {
-        resultFile->data ? free(resultFile->data) : NULL;
-        resultFile->path ? free(resultFile->path) : NULL;
+        resultFile->data ? free(resultFile->data) : (void)NULL;
+        resultFile->path ? free(resultFile->path) : (void)NULL;
         free(resultFile);
     }
 }
@@ -462,9 +474,9 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
 
     if (errToSet)
     {
-        fs && (fs->filesDict) ? icl_hash_destroy(fs->filesDict, NULL, NULL) : NULL;
-        fs && (fs->filesList) ? List_free(&fs->filesList, 0, NULL) : NULL;
-        fs ? free(fs) : NULL;
+        fs && (fs->filesDict) ? icl_hash_destroy(fs->filesDict, NULL, NULL) : 0;
+        fs && (fs->filesList) ? List_free(&fs->filesList, 0, NULL) : (void)NULL;
+        fs ? free(fs) : (void)NULL;
     }
 
     SET_ERROR;
@@ -505,18 +517,42 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     // the file list is not empty
 
     int errToSet = 0;
-    int hasMutex = 0;
-    int hasOrdering = 1;
     File file = NULL;
+    File temp = NULL;
     ResultFile evictedFile = NULL;
+    size_t listLength = List_length(fs->filesList, &errToSet);
 
-    if (path)
+    if (!errToSet)
     {
-        struct File temp;
-        temp.path = path;
-        file = List_searchExtract(fs->filesList, filePathComparator, &temp, &errToSet);
+        file = List_pickTail(fs->filesList, &errToSet);
     }
-    else
+
+    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength <= 1)
+    {
+        errToSet = E_FS_FAILED_EVICT;
+    }
+
+    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength > 1)
+    {
+        temp = List_extractTail(fs->filesList, &errToSet);
+
+        if (!errToSet)
+        {
+            file = List_extractTail(fs->filesList, &errToSet);
+        }
+
+        if (!errToSet)
+        {
+            List_insertTail(fs->filesList, temp, &errToSet);
+        }
+
+        if (errToSet)
+        {
+            errToSet = E_FS_FAILED_EVICT;
+        }
+    }
+
+    if (!errToSet && path && strncmp(file->path, path, strlen(path)) != 0)
     {
         file = List_extractTail(fs->filesList, &errToSet);
     }
@@ -525,23 +561,20 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     {
         // remove the file from the dict as well
         icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
-        // update fs
-        fs->currentNumOfFiles--;
-        fs->currentStorageSize -= file->size;
 
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                    })
     }
 
     if (!errToSet)
     {
-        hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                    })
     }
 
     if (!errToSet)
@@ -564,12 +597,15 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
+        fs->currentNumOfFiles--;
+        fs->currentStorageSize -= file->size;
+
         evictedFile->data = file->data;
         evictedFile->path = file->path;
         evictedFile->size = file->size;
 
-        List_free(file->openedBy, 1, NULL);
-        List_free(file->waitingLockers, 1, NULL);
+        List_free(&file->openedBy, 1, NULL);
+        List_free(&file->waitingLockers, 1, NULL);
         free(file);
     }
 
@@ -595,7 +631,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         errToSet = E_FS_NULL_FS;
     }
 
-    if (!errToSet && (path == NULL || (flags != O_CREATE && flags != O_LOCK && flags != O_CREATE | O_LOCK && flags != 0b0)))
+    if (!errToSet && (path == NULL || (flags != O_CREATE && flags != O_LOCK && flags != (O_CREATE | O_LOCK) && flags != 0x00)))
     {
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
@@ -603,10 +639,11 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -696,10 +733,11 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (!errToSet)
         {
             insertedIntoDict = 1;
-            IS_NULL_DO(icl_hash_insert(fs->filesDict, file->path, file), {
-                errToSet = E_FS_GENERAL;
-                insertedIntoDict = 0;
-            })
+            IS_NULL_DO(icl_hash_insert(fs->filesDict, file->path, file),
+                       {
+                           errToSet = E_FS_GENERAL;
+                           insertedIntoDict = 0;
+                       })
         }
 
         if (!errToSet)
@@ -721,11 +759,11 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             List_deleteHead(fs->filesList, NULL);
         }
 
-        file && file->path ? free(file->path) : NULL;
-        file && file->openedBy ? List_free(&file->openedBy, 0, NULL) : NULL;
-        file && file->waitingLockers ? List_free(&file->waitingLockers, 0, NULL) : NULL;
+        file && file->path ? free(file->path) : (void)NULL;
+        file && file->openedBy ? List_free(&file->openedBy, 0, NULL) : (void)NULL;
+        file && file->waitingLockers ? List_free(&file->waitingLockers, 0, NULL) : (void)NULL;
         // TODO: valutare se reinserire dentro il file evictato o no
-        file ? free(file) : NULL;
+        file ? free(file) : (void)NULL;
         file = NULL;
     }
 
@@ -738,27 +776,30 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         int hasMutex = 0;
         int hasOrdering = 1;
 
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
 
         if (!errToSet)
         {
             hasMutex = 1;
-            NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-                errToSet = E_FS_MUTEX;
-                hasMutex = 0;
-            })
+            NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasMutex = 0;
+                        })
         }
 
         if (!errToSet) // I do have the overallMutex
         {
             hasFSMutex = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-                errToSet = E_FS_MUTEX;
-                hasFSMutex = 1;
-            })
+            NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasFSMutex = 1;
+                        })
         }
 
         if (!errToSet)
@@ -779,19 +820,21 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (hasOrdering)
         {
             hasOrdering = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-                errToSet = E_FS_MUTEX;
-                hasOrdering = 1;
-            })
+            NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasOrdering = 1;
+                        })
         }
 
         if (hasMutex)
         {
             hasMutex = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-                errToSet = E_FS_MUTEX;
-                hasMutex = 1;
-            })
+            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasMutex = 1;
+                        })
         }
 
         // do stuff if it is all alright
@@ -838,17 +881,18 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                 {
                     List_extractHead(file->openedBy, NULL);
                 }
-                oid ? free(oid) : NULL;
+                oid ? free(oid) : (void)NULL;
             }
         }
 
         if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
         {
             hasMutex = 1;
-            NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-                errToSet = E_FS_MUTEX;
-                hasMutex = 0;
-            })
+            NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasMutex = 0;
+                        })
         }
 
         if (!errToSet || errToSet == E_FS_FILE_IS_LOCKED || errToSet == E_FS_MALLOC)
@@ -863,20 +907,22 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             })
 
             hasMutex = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-                errToSet = E_FS_MUTEX;
-                hasMutex = 1;
-            })
+            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasMutex = 1;
+                        })
         }
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (errToSet)
@@ -913,10 +959,11 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -935,28 +982,31 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (hasFSMutex)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -978,19 +1028,21 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -1020,7 +1072,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     {
         resultFile->size = file->size;
         resultFile->data = malloc(sizeof(*resultFile->data) * file->size);
-        IS_NULL_DO(resultFile->size, { errToSet = E_FS_MALLOC; })
+        IS_NULL_DO(resultFile->data, { errToSet = E_FS_MALLOC; })
     }
 
     if (!errToSet)
@@ -1031,7 +1083,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         resultFile->path = malloc(sizeof(*resultFile->path) * (strlen(file->path) + 1));
-        IS_NULL_DO(resultFile->size, { errToSet = E_FS_MALLOC; })
+        IS_NULL_DO(resultFile->path, { errToSet = E_FS_MALLOC; })
     }
 
     if (!errToSet)
@@ -1042,10 +1094,11 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
@@ -1068,16 +1121,17 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     {
         hasMutex = 0;
 
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (errToSet && resultFile)
     {
-        resultFile->data ? free(resultFile->data) : NULL;
-        resultFile->path ? free(resultFile->path) : NULL;
+        resultFile->data ? free(resultFile->data) : (void)NULL;
+        resultFile->path ? free(resultFile->path) : (void)NULL;
         free(resultFile);
         resultFile = NULL;
     }
@@ -1103,10 +1157,11 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -1142,17 +1197,18 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
 
     if (errToSet)
     {
-        resultFiles ? List_free(&resultFiles, 0, NULL) : NULL;
+        resultFiles ? List_free(&resultFiles, 0, NULL) : (void)NULL;
         resultFiles = NULL;
     }
 
     if (hasFSMutex)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -1165,8 +1221,6 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int insertedIntoList = 0;
-    int insertedIntoDict = 0;
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
@@ -1192,10 +1246,19 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
+    }
+
+    if (!errToSet)
+    {
+        if (contentSize >= fs->maxStorageSize)
+        {
+            errToSet = E_FS_EXCEEDED_SIZE;
+        }
     }
 
     if (!errToSet)
@@ -1207,28 +1270,31 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     if (!errToSet)
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -1250,25 +1316,33 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // do stuff if it is all alright
     if (!errToSet)
     {
-        if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
+
+        if (file->size + contentSize >= fs->maxStorageSize)
+        {
+            errToSet = E_FS_EXCEEDED_SIZE;
+        }
+
+        if (!errToSet && file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
@@ -1289,9 +1363,19 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             }
         }
 
-        while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize))
+        if (!errToSet)
         {
-            ResultFile evicted = FileSystem_evict(fs, NULL, &errToSet);
+            hasFSMutex = 1;
+            NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasFSMutex = 0;
+                        })
+        }
+
+        while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize) && fs->currentNumOfFiles != 0)
+        {
+            ResultFile evicted = FileSystem_evict(fs, file->path, &errToSet);
             if (!errToSet)
             {
                 List_insertHead(evictedFiles, evicted, &errToSet);
@@ -1319,15 +1403,26 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             temp.path = file->path;
             List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
         }
+
+        if (hasFSMutex)
+        {
+            hasFSMutex = 0;
+            NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasFSMutex = 1;
+                        })
+        }
     }
 
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
@@ -1342,24 +1437,26 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         })
 
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (errToSet)
     {
-        evictedFiles ? List_free(evictedFiles, 1, NULL) : NULL;
+        evictedFiles ? List_free(&evictedFiles, 1, NULL) : (void)NULL;
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -1372,8 +1469,6 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int insertedIntoList = 0;
-    int insertedIntoDict = 0;
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
@@ -1392,10 +1487,11 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -1407,28 +1503,31 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     if (!errToSet)
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -1450,28 +1549,26 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // do stuff if it is all alright
     if (!errToSet)
     {
-
-        OwnerId _ownerId;
-        _ownerId.id = ownerId.id;
-
         if (!errToSet && file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0)
         {
 
@@ -1528,10 +1625,11 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
@@ -1546,19 +1644,21 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         })
 
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -1570,8 +1670,6 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int insertedIntoList = 0;
-    int insertedIntoDict = 0;
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
@@ -1592,10 +1690,11 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -1607,28 +1706,31 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -1650,27 +1752,26 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // do stuff if it is all alright
     if (!errToSet)
     {
-
-        OwnerId _ownerId;
-        _ownerId.id = ownerId.id;
 
         if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
         {
@@ -1714,10 +1815,11 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
@@ -1732,19 +1834,21 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         })
 
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -1775,10 +1879,11 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     if (!errToSet)
@@ -1790,28 +1895,31 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     if (!errToSet)
     {
         hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (!errToSet)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     if (!errToSet)
@@ -1833,19 +1941,21 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     if (hasOrdering)
     {
         hasOrdering = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
     }
 
     if (hasMutex)
     {
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // do stuff if it is all alright
@@ -1869,7 +1979,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         // if (!errToSet && !lockedByOthers)
         if (!errToSet)
         {
-            OwnerId *ext = List_findExtract(file->openedBy, ownerIdComparator, &errToSet);
+            OwnerId *ext = List_searchExtract(file->openedBy, ownerIdComparator, &_ownerId, &errToSet);
             if (!errToSet)
             {
                 // The client has passed the "has opened the file" control, so 'ext' won't be NULL
@@ -1888,10 +1998,11 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
+                    })
     }
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
@@ -1906,19 +2017,21 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         })
 
         hasMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -1932,9 +2045,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int errToSet = 0;
-    int hasMutex = 0;
-    int hasOrdering = 0;
+
     File file = NULL;
 
     if (fs == NULL)
@@ -1949,11 +2060,10 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
     if (!errToSet)
     {
-        hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                    })
     }
 
     if (!errToSet)
@@ -1964,20 +2074,18 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
     if (!errToSet)
     {
-        hasOrdering = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->ordering), {
-            errToSet = E_FS_MUTEX;
-            hasOrdering = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                    })
     }
 
     if (!errToSet)
     {
-        hasMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&file->mutex), {
-            errToSet = E_FS_MUTEX;
-            hasMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                    })
     }
 
     while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
@@ -2014,18 +2122,19 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
         free(file->data);
         free(file->path);
-        List_free(file->openedBy, 1, NULL);
-        List_free(file->waitingLockers, 1, NULL);
+        List_free(&file->openedBy, 1, NULL);
+        List_free(&file->waitingLockers, 1, NULL);
         free(file);
     }
 
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -2040,7 +2149,6 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
 
     int errToSet = 0;
     int hasFSMutex = 0;
-    int errToSet = 0;
 
     if (fs == NULL)
     {
@@ -2050,10 +2158,11 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     if (!errToSet)
     {
         hasFSMutex = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
     }
 
     List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
@@ -2061,10 +2170,11 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex), {
-            errToSet = E_FS_MUTEX;
-            hasFSMutex = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
     }
 
     SET_ERROR;
@@ -2108,7 +2218,7 @@ const char *filesystem_error_messages[] = {
     "filesystem file is not locked",
     "filesystem file already locked",
     "filesystem result-file is null",
-
+    "filesystem eviction failed",
 };
 
 const char *FileSystem_getErrorMessage(int errorCode)
