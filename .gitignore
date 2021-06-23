@@ -52,6 +52,5 @@ Mkfile.old
 dkms.conf
 
 bin/
-test/
 
 .vscode

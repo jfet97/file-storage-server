@@ -1,0 +1,14 @@
+==2606== Memcheck, a memory error detector
+==2606== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==2606== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==2606== Command: /home/jfet97/Documents/SOL/file-storage-server/simple-queue/test/bin/main
+==2606== Parent PID: 864
+==2606== 
+==2606== 
+==2606== HEAP SUMMARY:
+==2606==     in use at exit: 0 bytes in 0 blocks
+==2606==   total heap usage: 48,904 allocs, 48,904 frees, 1,209,835 bytes allocated
+==2606== 
+==2606== All heap blocks were freed -- no leaks are possible
+==2606== 
+==2606== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

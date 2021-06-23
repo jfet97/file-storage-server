@@ -1,0 +1,14 @@
+==5095== Memcheck, a memory error detector
+==5095== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==5095== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==5095== Command: /home/jfet97/Documents/SOL/file-storage-server/simple-queue/test/bin/main
+==5095== Parent PID: 864
+==5095== 
+==5095== 
+==5095== HEAP SUMMARY:
+==5095==     in use at exit: 0 bytes in 0 blocks
+==5095==   total heap usage: 15 allocs, 15 frees, 1,697 bytes allocated
+==5095== 
+==5095== All heap blocks were freed -- no leaks are possible
+==5095== 
+==5095== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

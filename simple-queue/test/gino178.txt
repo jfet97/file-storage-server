@@ -1,0 +1,14 @@
+==21982== Memcheck, a memory error detector
+==21982== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==21982== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==21982== Command: /home/jfet97/Documents/SOL/file-storage-server/simple-queue/test/bin/main
+==21982== Parent PID: 864
+==21982== 
+==21982== 
+==21982== HEAP SUMMARY:
+==21982==     in use at exit: 0 bytes in 0 blocks
+==21982==   total heap usage: 99,336 allocs, 99,336 frees, 2,444,077 bytes allocated
+==21982== 
+==21982== All heap blocks were freed -- no leaks are possible
+==21982== 
+==21982== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
