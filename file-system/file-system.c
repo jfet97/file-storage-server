@@ -1287,15 +1287,6 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                     })
     }
 
-    if (!errToSet)
-    {
-        hasFSMutex = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
-                    {
-                        errToSet = E_FS_MUTEX;
-                        hasFSMutex = 1;
-                    })
-    }
 
     if (!errToSet)
     {
@@ -1361,16 +1352,6 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             {
                 errToSet = E_FS_FILE_NOT_OPENED;
             }
-        }
-
-        if (!errToSet)
-        {
-            hasFSMutex = 1;
-            NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
-                        {
-                            errToSet = E_FS_MUTEX;
-                            hasFSMutex = 0;
-                        })
         }
 
         while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize) && fs->currentNumOfFiles != 0)

@@ -25,7 +25,13 @@ int main(void)
 {
 
     int error;
-    FileSystem fs = FileSystem_create(1024, 5, FS_REPLACEMENT_FIFO, &error);
+    // FileSystem fs = FileSystem_create(1024, 3, FS_REPLACEMENT_FIFO, &error);
+
+    // FileSystem_delete(&fs, &error);
+
+    // printf("Error: %d\n", error);
+
+
 
     puts("well done!");
 }
