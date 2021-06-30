@@ -12,6 +12,12 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
+
 void print(int error)
 {
     if (error)
@@ -47,7 +53,7 @@ int main(void)
     unsigned int N = 300;
 
     int error = 0;
-    Logger_create("./bin/log.txt", &error);
+    Logger_create("./log.txt", &error);
     print(error);
 
     for (int i = 0; i < 100; i++)
