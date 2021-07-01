@@ -83,13 +83,14 @@ int main(void)
 
     // PATH_FILE_1 is the biggest and the oldest file in the file-system
     rf = FileSystem_openFile(fs, PATH_FILE_4, O_CREATE | O_LOCK, client_2, &error);
-    // TODO: con client_1 non ha dato alcun errore
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, sizeof(CONTENT_FILE_4) + 1, client_2, 1, &error), rfs, &error);
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, sizeof(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, sizeof(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error); // should fail
     print(&error);
+    
     puts(rf->path);
     puts(rf->data);
     ResultFile_free(&rf, &error);
+    
     PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);
