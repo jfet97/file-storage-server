@@ -47,7 +47,7 @@ int main(void)
 
     ResultFile rf = NULL;
 
-    // FileSystem_openFile(fs, PATH_FILE_1, O_CREATE, client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_1, O_CREATE, client_1, &error);
 
     FileSystem_delete(&fs, &error);
 

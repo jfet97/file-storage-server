@@ -66,8 +66,9 @@ void fileDeallocator(void *rawFile)
     File file = rawFile;
     free(file->path);
     free(file->data);
-    List_free(&(file->waitingLockers), 0, NULL);
-    List_free(&(file->openedBy), 0, NULL);
+    // free also the ownerIds inside the lists
+    List_free(&(file->waitingLockers), 1, NULL);
+    List_free(&(file->openedBy), 1, NULL);
 }
 
 void fileResultDeallocator(void *rawFile)
@@ -483,9 +484,9 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
     return fs;
 }
 
+// Note: a precondition is that this function must be called when all but one threads have died => no mutex is required
 void FileSystem_delete(FileSystem *fsPtr, int *error)
 {
-    // precondition: it will be called when all but one threads have died => no mutex is required
 
     int errToSet = 0;
     FileSystem fs = NULL;
@@ -616,7 +617,6 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 // Open a file.
 //
 // Note: the `path` variable is owned by the caller
-// TODO: ckeck, chi dealloca gli id nelle liste di attesa lock e di apertura file?
 ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
 {
 
@@ -705,6 +705,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             file->activeReaders = 0;
             file->activeWriters = 0;
             file->currentlyLockedBy.id = 0;
+            // there is nothing that should be manually fried
             file->openedBy = List_create(ownerIdComparator, NULL, NULL, &errToSet);
             IS_NULL_DO(file->openedBy, { errToSet = E_FS_MALLOC; })
         }
@@ -718,6 +719,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (!errToSet)
         {
             strcpy(file->path, path);
+            // there is nothing that should be manually fried
             file->waitingLockers = List_create(ownerIdComparator, NULL, NULL, &errToSet);
             IS_NULL_DO(file->waitingLockers, { errToSet = E_FS_MALLOC; })
         }
