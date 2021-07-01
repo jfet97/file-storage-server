@@ -2054,7 +2054,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     // siano in attesa su esse
 
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 1;
 
     File file = NULL;
 
@@ -2073,6 +2073,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
                     {
                         errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
                     })
     }
 
@@ -2209,6 +2210,84 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
     }
 
     SET_ERROR
+}
+
+size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error)
+{
+    int errToSet = 0;
+    int hasFSMutex = 1;
+    int size = 0;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet)
+    {
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
+    }
+
+    if (!errToSet)
+    {
+        size = fs->currentStorageSize;
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
+    }
+
+    SET_ERROR;
+    return size;
+}
+
+size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error)
+{
+    int errToSet = 0;
+    int hasFSMutex = 1;
+    int numOfFiles = 0;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet)
+    {
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
+    }
+
+    if (!errToSet)
+    {
+        numOfFiles = fs->currentNumOfFiles;
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
+    }
+
+    SET_ERROR;
+    return numOfFiles;
 }
 
 const char *filesystem_error_messages[] = {

@@ -24,6 +24,10 @@
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
+#define PRINT_FS_STATS(FS, E)                                              \
+    printf("NUM OF FILES: %d\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
+    printf("SIZE: %d\n", ResultFile_getCurrentSizeInByte(FS, &E));
+
 void print(int error)
 {
     if (error)
@@ -47,13 +51,14 @@ int main(void)
 
     ResultFile rf = NULL;
 
-    FileSystem_openFile(fs, PATH_FILE_1, O_CREATE, client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_2, &error);
+    FileSystem_openFile(fs, PATH_FILE_3, O_CREATE | O_LOCK, client_1, &error);
+    PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);
 
     printf("Error: %d\n", error);
-
-
 
     puts("well done!");
 }
