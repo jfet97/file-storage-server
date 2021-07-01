@@ -16,19 +16,26 @@
 #define MAX_STORAGE_SIZE 1024
 #define MAX_NUM_OF_FILES 3
 #define PATH_FILE_1 "/folder1/file1.txt"
-#define CONTENT_FILE_1 "ciao dal file 1 - test"
+#define CONTENT_FILE_1 "1234567890"
 #define PATH_FILE_2 "/folder2/file2.txt"
-#define CONTENT_FILE_2 "ciao dal file 2 - test"
+#define CONTENT_FILE_2 "2345678901"
 #define PATH_FILE_3 "/folder3/file3.txt"
-#define CONTENT_FILE_3 "ciao dal file 3 - test"
-#define PATH_FILE_3 "/folder3/file4.txt"
-#define CONTENT_FILE_3 "ciao dal file 4 - test"
+#define CONTENT_FILE_3 "3456789012"
+#define PATH_FILE_4 "/folder4/file4.txt"
+#define CONTENT_FILE_4 "4567890123"
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
 #define PRINT_FS_STATS(FS, E)                                              \
     printf("NUM OF FILES: %d\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
     printf("SIZE: %d\n", ResultFile_getCurrentSizeInByte(FS, &E));
+
+#define IGNORE_APPEND_RES(A, R, E) \
+    R = A;                         \
+    if (R)                         \
+    {                              \
+        List_free(&R, 0, E);       \
+    }
 
 void print(int *error)
 {
@@ -56,24 +63,34 @@ int main(void)
     FileSystem fs = FileSystem_create(MAX_STORAGE_SIZE, MAX_NUM_OF_FILES, USED_POLICY, &error);
 
     ResultFile rf = NULL;
+    List_T rfs = NULL;
 
     FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error); // should fail
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error), rfs, &error);
+
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error), rfs, &error); // should fail
     print(&error);
-    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 0, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 0, &error), rfs, &error);
 
     FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_2, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, sizeof(CONTENT_FILE_2) + 1, client_2, 1, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, sizeof(CONTENT_FILE_2) + 1, client_2, 1, &error), rfs, &error);
 
     FileSystem_openFile(fs, PATH_FILE_3, O_CREATE | O_LOCK, client_1, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, sizeof(CONTENT_FILE_3) + 1, client_1, 1, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, sizeof(CONTENT_FILE_3) + 1, client_1, 1, &error), rfs, &error);
 
     printf("files size: %d\n", 2 * (sizeof(CONTENT_FILE_1) + 1) + sizeof(CONTENT_FILE_2) + 1 + sizeof(CONTENT_FILE_3) + 1);
     PRINT_FS_STATS(fs, error);
 
     // PATH_FILE_1 is the biggest and the oldest file in the file-system
-
+    rf = FileSystem_openFile(fs, PATH_FILE_4, O_CREATE | O_LOCK, client_2, &error);
+    // TODO: con client_1 non ha dato alcun errore
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, sizeof(CONTENT_FILE_4) + 1, client_2, 1, &error), rfs, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, sizeof(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error);
+    print(&error);
+    puts(rf->path);
+    puts(rf->data);
+    ResultFile_free(&rf, &error);
+    PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);
 

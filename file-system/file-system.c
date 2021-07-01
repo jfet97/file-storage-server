@@ -42,13 +42,6 @@ struct File
     pthread_cond_t go;
 };
 
-struct ResultFile
-{
-    char *path;
-    char *data;
-    size_t size;
-};
-
 struct ReadNFileSetResultFilesContext
 {
     List_T resultFiles;
@@ -248,7 +241,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     // assumption: it has overall mutex
 
     struct ReadNFileSetResultFilesContext *ctx = rawCtx;
-    struct ResultFile *resultFile = NULL;
+    ResultFile resultFile = NULL;
     File file = rawFile;
 
     int hasMutex = 0;
@@ -414,7 +407,7 @@ void moveFilesLRU(void *rawCtx, void *rawResultFile, int *error)
     }
 
     struct ReadNFileLRUContext *ctx = rawCtx;
-    struct ResultFile *resultFile = rawResultFile;
+    ResultFile resultFile = rawResultFile;
 
     struct File temp;
     temp.path = resultFile->path;
@@ -512,48 +505,62 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
     SET_ERROR;
 }
 
+// Notes:
+// - if the first extracted file is equal to path, another file should be evicted in its place
+// - the path is owned by the caller
+// - precondition: must be called with the overall (file-system) mutex already taken
 ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 {
-    // precondition: it will be called having the overallMutex and with a valid fs
-    // the file list is not empty
-
     int errToSet = 0;
     File file = NULL;
     File temp = NULL;
     ResultFile evictedFile = NULL;
     size_t listLength = List_length(fs->filesList, &errToSet);
 
+    // try to pick a file from the end of the list
     if (!errToSet)
     {
         file = List_pickTail(fs->filesList, &errToSet);
+        IS_NULL_DO(file, { errToSet = E_FS_FAILED_EVICT; })
     }
 
-    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength <= 1)
+    // if the picked file's path corresponds to the path argument, but there are no other files to evict
+    // in its place, declare a failure
+    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength - 1 == 0)
     {
         errToSet = E_FS_FAILED_EVICT;
     }
 
-    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength > 1)
+    // if the picked file's path corresponds to the path argument, and there is at least one file to evict
+    // in its place, evict it
+    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength - 1 > 0)
     {
+        // temp: the file to not be evicted; it was previously picked
+        // will be inserted back
         temp = List_extractTail(fs->filesList, &errToSet);
 
         if (!errToSet)
         {
+            // file: the file to evict
             file = List_extractTail(fs->filesList, &errToSet);
         }
 
         if (!errToSet)
         {
+            // reinsert temp
             List_insertTail(fs->filesList, temp, &errToSet);
         }
 
         if (errToSet)
         {
             errToSet = E_FS_FAILED_EVICT;
+        } else {
+            temp = NULL;
         }
     }
 
-    if (!errToSet && path && strncmp(file->path, path, strlen(path)) != 0)
+    // if the picket file's path does not correspond to the path argument, or path was NULL, evict it
+    if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
     {
         file = List_extractTail(fs->filesList, &errToSet);
     }
@@ -563,6 +570,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         // remove the file from the dict as well
         icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
 
+        // acquire the ordering lock of the evicted file
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
                     {
                         errToSet = E_FS_MUTEX;
@@ -571,7 +579,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
-
+        // acquire the mutex lock of the evicted file
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
                     {
                         errToSet = E_FS_MUTEX;
@@ -580,6 +588,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
+        // wait my turn
         while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
@@ -590,6 +599,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
+        // create a ResultFile structure to be returned
         evictedFile = malloc(sizeof(*evictedFile));
         IS_NULL_DO(evictedFile, {
             errToSet = E_FS_MALLOC;
@@ -598,13 +608,16 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
+        // update the file-system
         fs->currentNumOfFiles--;
         fs->currentStorageSize -= file->size;
 
+        // fulfill the evictedFile structure
         evictedFile->data = file->data;
         evictedFile->path = file->path;
         evictedFile->size = file->size;
 
+        // free all the file's data that aren't going to be used again
         List_free(&file->openedBy, 1, NULL);
         List_free(&file->waitingLockers, 1, NULL);
         free(file);
@@ -676,7 +689,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
     }
 
-    // enter here iff the file mhas to be created first
+    // enter here iff the file has to be created first
     if (!errToSet && !isAlreadyThereFile)
     {
 
@@ -705,7 +718,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             file->activeReaders = 0;
             file->activeWriters = 0;
             file->currentlyLockedBy.id = 0;
-            // there is nothing that should be manually fried
+            // there is nothing that should be manually freed
             file->openedBy = List_create(ownerIdComparator, NULL, NULL, &errToSet);
             IS_NULL_DO(file->openedBy, { errToSet = E_FS_MALLOC; })
         }
@@ -719,7 +732,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (!errToSet)
         {
             strcpy(file->path, path);
-            // there is nothing that should be manually fried
+            // there is nothing that should be manually freed
             file->waitingLockers = List_create(ownerIdComparator, NULL, NULL, &errToSet);
             IS_NULL_DO(file->waitingLockers, { errToSet = E_FS_MALLOC; })
         }
@@ -2208,6 +2221,7 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
     {
         free((*rfPtr)->data);
         free((*rfPtr)->path);
+        free(*rfPtr);
         *rfPtr = NULL;
     }
 

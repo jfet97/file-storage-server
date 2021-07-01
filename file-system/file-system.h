@@ -27,12 +27,18 @@
 #define FS_REPLACEMENT_LRU 101
 
 typedef struct File *File;
-typedef struct ResultFile *ResultFile;
 typedef struct FileSystem *FileSystem;
 typedef struct
 {
     int id;
 } OwnerId;
+
+typedef struct
+{
+    char *path;
+    char *data;
+    size_t size;
+} *ResultFile;
 
 int ownerIdComparator(void *, void *);
 
