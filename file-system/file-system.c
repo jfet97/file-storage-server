@@ -580,7 +580,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -764,7 +764,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (!errToSet)
         {
-            file->ownerCanWrite.id = ownerId.id;
+            file->ownerCanWrite.id = createFlag && lockFlag ? ownerId.id : 0;
             fs->currentNumOfFiles++;
         }
     }
@@ -1248,6 +1248,8 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
 List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error)
 {
     // is caller responsibility to free path and content
+    // write 0 === append
+    // write 1 === write
 
     int errToSet = 0;
     int hasFSMutex = 0;
@@ -1319,7 +1321,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
 
     if (!errToSet)
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1367,7 +1369,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             errToSet = E_FS_FILE_IS_LOCKED;
         }
 
-        if (!errToSet && write && file->ownerCanWrite.id != ownerId.id)
+        if (!errToSet && !write && file->ownerCanWrite.id != ownerId.id)
         {
             errToSet = E_FS_FILE_NO_WRITE;
         }
@@ -1383,7 +1385,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             }
         }
 
-        while (!errToSet && ((fs->currentStorageSize + contentSize) < fs->maxStorageSize) && fs->currentNumOfFiles != 0)
+        while (!errToSet && ((fs->currentStorageSize + contentSize) >= fs->maxStorageSize) && fs->currentNumOfFiles != 0)
         {
             ResultFile evicted = FileSystem_evict(fs, file->path, &errToSet);
             if (!errToSet)

@@ -52,8 +52,15 @@ int main(void)
     ResultFile rf = NULL;
 
     FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 0, &error);
+
     FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_2, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, sizeof(CONTENT_FILE_2) + 1, client_2, 0, &error);
+
     FileSystem_openFile(fs, PATH_FILE_3, O_CREATE | O_LOCK, client_1, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, sizeof(CONTENT_FILE_3) + 1, client_1, 0, &error);
+
+    printf("files size: %d\n", sizeof(CONTENT_FILE_1) + 1 + sizeof(CONTENT_FILE_2) + 1 + sizeof(CONTENT_FILE_3) + 1);
     PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);
