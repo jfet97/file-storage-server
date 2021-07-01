@@ -21,6 +21,8 @@
 #define CONTENT_FILE_2 "ciao dal file 2 - test"
 #define PATH_FILE_3 "/folder3/file3.txt"
 #define CONTENT_FILE_3 "ciao dal file 3 - test"
+#define PATH_FILE_3 "/folder3/file4.txt"
+#define CONTENT_FILE_3 "ciao dal file 4 - test"
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
@@ -28,14 +30,18 @@
     printf("NUM OF FILES: %d\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
     printf("SIZE: %d\n", ResultFile_getCurrentSizeInByte(FS, &E));
 
-void print(int error)
+void print(int *error)
 {
-    if (error)
+    if (error && *error)
     {
-        puts(FileSystem_getErrorMessage(error));
-        exit(EXIT_FAILURE);
+        puts(FileSystem_getErrorMessage(*error));
+        *error = 0;
     }
 }
+
+// TODO: test dei flag
+// TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
+// TODO: commentare il file-system, check delle condizioni nei cicli
 
 int main(void)
 {
@@ -52,16 +58,22 @@ int main(void)
     ResultFile rf = NULL;
 
     FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 1, &error); // should fail
+    print(&error);
     FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, sizeof(CONTENT_FILE_1) + 1, client_1, 0, &error);
 
     FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_2, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, sizeof(CONTENT_FILE_2) + 1, client_2, 0, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, sizeof(CONTENT_FILE_2) + 1, client_2, 1, &error);
 
     FileSystem_openFile(fs, PATH_FILE_3, O_CREATE | O_LOCK, client_1, &error);
-    FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, sizeof(CONTENT_FILE_3) + 1, client_1, 0, &error);
+    FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, sizeof(CONTENT_FILE_3) + 1, client_1, 1, &error);
 
-    printf("files size: %d\n", sizeof(CONTENT_FILE_1) + 1 + sizeof(CONTENT_FILE_2) + 1 + sizeof(CONTENT_FILE_3) + 1);
+    printf("files size: %d\n", 2 * (sizeof(CONTENT_FILE_1) + 1) + sizeof(CONTENT_FILE_2) + 1 + sizeof(CONTENT_FILE_3) + 1);
     PRINT_FS_STATS(fs, error);
+
+    // PATH_FILE_1 is the biggest and the oldest file in the file-system
+
 
     FileSystem_delete(&fs, &error);
 

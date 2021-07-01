@@ -1369,7 +1369,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             errToSet = E_FS_FILE_IS_LOCKED;
         }
 
-        if (!errToSet && !write && file->ownerCanWrite.id != ownerId.id)
+        if (!errToSet && write && file->ownerCanWrite.id != ownerId.id)
         {
             errToSet = E_FS_FILE_NO_WRITE;
         }
