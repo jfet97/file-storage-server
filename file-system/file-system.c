@@ -2188,6 +2188,7 @@ const char *filesystem_error_messages[] = {
     "filesystem general error",
     "filesystem internal mutex error",
     "filesystem internal cond error",
+    "filesystem unknown replacement policy",
     "filesystem too many files",
     "filesystem size overflow",
     "filesystem invalid arguments",
