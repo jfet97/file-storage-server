@@ -12,6 +12,18 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
+#define USED_POLICY FS_REPLACEMENT_FIFO
+#define MAX_STORAGE_SIZE 1024
+#define MAX_NUM_OF_FILES 3
+#define PATH_FILE_1 "/folder1/file1.txt"
+#define CONTENT_FILE_1 "ciao dal file 1 - test"
+#define PATH_FILE_2 "/folder2/file2.txt"
+#define CONTENT_FILE_2 "ciao dal file 2 - test"
+#define PATH_FILE_3 "/folder3/file3.txt"
+#define CONTENT_FILE_3 "ciao dal file 3 - test"
+#define CLIENT_ID_1 1001
+#define CLIENT_ID_2 1002
+
 void print(int error)
 {
     if (error)
@@ -25,7 +37,17 @@ int main(void)
 {
 
     int error;
-    FileSystem fs = FileSystem_create(1024, 3, FS_REPLACEMENT_FIFO, &error);
+
+    // clients' ids
+    OwnerId client_1, client_2;
+    client_1.id = CLIENT_ID_1;
+    client_2.id = CLIENT_ID_2;
+
+    FileSystem fs = FileSystem_create(MAX_STORAGE_SIZE, MAX_NUM_OF_FILES, USED_POLICY, &error);
+
+    ResultFile rf = NULL;
+
+    // FileSystem_openFile(fs, PATH_FILE_1, O_CREATE, client_1, &error);
 
     FileSystem_delete(&fs, &error);
 

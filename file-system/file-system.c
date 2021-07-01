@@ -613,19 +613,24 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     return evictedFile;
 }
 
+// Open a file.
+//
+// Note: the `path` variable is owned by the caller
+// TODO: ckeck, chi dealloca gli id nelle liste di attesa lock e di apertura file?
 ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path
+
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // overall mutex
     int insertedIntoList = 0;
     int insertedIntoDict = 0;
-    int isAlreadyThereFile = 0;
+    int isAlreadyThereFile = 0; // is the file already present in the file-system?
     int createFlag = flags & O_CREATE;
     int lockFlag = flags & O_LOCK;
     File file = NULL;
     ResultFile evictedFile = NULL;
 
+    // check arguments
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -636,6 +641,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // get overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -646,13 +652,19 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                     })
     }
 
+    // check if the file is already present in the file-system,
+    // to then act properly according to the received flags
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
+
+        // if the file was there, the O_CREATE flag must be set to 0 to proceed
         if (file != NULL && createFlag)
         {
             errToSet = E_FS_FILE_ALREADY_IN;
         }
+
+        // if the file was not there, the O_CREATE flag must be set to 1 to proceed
         if (file == NULL && !createFlag)
         {
             errToSet = E_FS_FILE_NOT_FOUND;
@@ -664,15 +676,18 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
     }
 
+    // enter here iff the file mhas to be created first
     if (!errToSet && !isAlreadyThereFile)
     {
-        // new file to create
 
+        // check if the number of file limit was reached
         if (fs->currentNumOfFiles == fs->maxNumOfFiles)
         {
+            // in such a case a file must be evicted
             evictedFile = FileSystem_evict(fs, NULL, &errToSet);
         }
 
+        // allocate a new file
         if (!errToSet)
         {
             file = malloc(sizeof(*file));
@@ -682,13 +697,16 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             })
         }
 
+        // initialize it
         if (!errToSet)
         {
             file->data = NULL;
             file->size = 0;
             file->activeReaders = 0;
             file->activeWriters = 0;
+            file->currentlyLockedBy.id = 0;
             file->openedBy = List_create(ownerIdComparator, NULL, NULL, &errToSet);
+            IS_NULL_DO(file->openedBy, { errToSet = E_FS_MALLOC; })
         }
 
         if (!errToSet)
@@ -701,6 +719,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         {
             strcpy(file->path, path);
             file->waitingLockers = List_create(ownerIdComparator, NULL, NULL, &errToSet);
+            IS_NULL_DO(file->waitingLockers, { errToSet = E_FS_MALLOC; })
         }
 
         if (!errToSet)
@@ -724,6 +743,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             })
         }
 
+        // if the initialization has endend correctly, insert the file inside the file-system
         if (!errToSet)
         {
             List_insertHead(fs->filesList, file, &errToSet);
@@ -747,6 +767,9 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
     }
 
+    // enters here if an error has occurred during the creation of a new file
+    //
+    // note: the evicted file won't be reinserted back into the file-system
     if (errToSet && !isAlreadyThereFile)
     {
         if (insertedIntoDict)
@@ -762,20 +785,18 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         file && file->path ? free(file->path) : (void)NULL;
         file && file->openedBy ? List_free(&file->openedBy, 0, NULL) : (void)NULL;
         file && file->waitingLockers ? List_free(&file->waitingLockers, 0, NULL) : (void)NULL;
-        // TODO: valutare se reinserire dentro il file evictato o no
         file ? free(file) : (void)NULL;
         file = NULL;
     }
 
+    // enters here whether the file had to be created from scratch or not
     if (!errToSet)
     {
-        // set who has opened the file as entry of the openedBy list of the file,
-        // eventually set currentLockedBy, eventually reset ownerCanWrite
-        // to do if the file is new or if the file was already present
-
+        // these flag are about the file's mutexes
         int hasMutex = 0;
         int hasOrdering = 1;
 
+        // get the file's locks
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
                     {
                         errToSet = E_FS_MUTEX;
@@ -792,7 +813,8 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                         })
         }
 
-        if (!errToSet) // I do have the overallMutex
+        // the overall mutex is not needed anymore
+        if (!errToSet)
         {
             hasFSMutex = 0;
             NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
@@ -804,7 +826,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (!errToSet)
         {
-            while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+            while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
             {
                 NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                     errToSet = E_FS_COND;
@@ -812,11 +834,13 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             }
         }
 
+        // this function is considered as a writer of the file
         if (!errToSet)
         {
             file->activeWriters++;
         }
 
+        // release file's locks
         if (hasOrdering)
         {
             hasOrdering = 0;
@@ -837,17 +861,24 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                         })
         }
 
-        // do stuff if it is all alright
         if (!errToSet)
         {
             OwnerId *oid = NULL;
             int insertIntoList = 0;
 
-            if (file->currentlyLockedBy.id != ownerId.id)
+            // if the file was locked by someone else, it cannot be opened
+            if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
             {
                 errToSet = E_FS_FILE_IS_LOCKED;
             }
 
+            // else, if the lockFlag was set lock the file
+            if (!errToSet && lockFlag)
+            {
+                file->currentlyLockedBy.id = ownerId.id;
+            }
+
+            // set who has opened the file as entry of the openedBy list of the file
             if (!errToSet)
             {
                 oid = malloc(sizeof(*oid));
@@ -865,16 +896,13 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                 insertIntoList = 1;
             }
 
+            // eventually reset ownerCanWrite
             if (!errToSet && isAlreadyThereFile)
             {
                 file->ownerCanWrite.id = 0;
             }
 
-            if (!errToSet && lockFlag)
-            {
-                file->currentlyLockedBy.id = ownerId.id;
-            }
-
+            // in case of errors, cancel the insertion in the file's openedBy list
             if (errToSet)
             {
                 if (oid && insertIntoList)
@@ -885,6 +913,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             }
         }
 
+        // get the file's mutex lock
         if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
         {
             hasMutex = 1;
@@ -895,6 +924,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                         })
         }
 
+        // end of work
         if (!errToSet || errToSet == E_FS_FILE_IS_LOCKED || errToSet == E_FS_MALLOC)
         {
             file->activeWriters--;
@@ -902,6 +932,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (hasMutex)
         {
+
             NON_ZERO_DO(pthread_cond_signal(&file->go), {
                 errToSet = E_FS_COND;
             })
@@ -915,6 +946,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
     }
 
+    // in case of initial errors, always release the file-system mutex
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
@@ -923,10 +955,6 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                         errToSet = E_FS_MUTEX;
                         hasFSMutex = 1;
                     })
-    }
-
-    if (errToSet)
-    {
     }
 
     SET_ERROR;
@@ -1286,7 +1314,6 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                         hasMutex = 0;
                     })
     }
-
 
     if (!errToSet)
     {
