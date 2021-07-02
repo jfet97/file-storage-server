@@ -40,6 +40,12 @@ typedef struct
     size_t size;
 } *ResultFile;
 
+typedef struct
+{
+    int index;
+    char **paths;
+} *Paths;
+
 int ownerIdComparator(void *, void *);
 
 
@@ -57,4 +63,5 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error);
 void ResultFile_free(ResultFile* rfPtr, int* error);
 size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error);
 size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error);
+Paths ResultFile_getStoredFilesPaths(FileSystem fs, int *error);
 const char *FileSystem_getErrorMessage(int errorCode);

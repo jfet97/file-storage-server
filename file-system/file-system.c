@@ -22,6 +22,16 @@
         todo;                  \
     }
 
+#define IS_NULL_DO_ELSE(cond, todo, todoelse) \
+    if (cond == NULL)                         \
+    {                                         \
+        todo;                                 \
+    }                                         \
+    else                                      \
+    {                                         \
+        todoelse;                             \
+    }
+
 struct File
 {
     // also used as key for the FileSystem's files dict
@@ -102,6 +112,18 @@ int filePathComparator(void *rawf1, void *rawf2)
     return strcmp(f1->path, f2->path) == 0;
 }
 
+void extractPaths(void *rawPaths, void *rawFile, int *error)
+{
+    // precondition: has overall mutex
+    Paths ps = rawPaths;
+    File file = rawFile;
+
+    if (!(*error))
+    {
+        memcpy(ps->paths + ps->index++, &file->path, sizeof(file->path));
+    }
+}
+
 void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 {
     // precondition: has overall mutex
@@ -134,7 +156,7 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 
     if (!(*error))
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !(*error))
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !(*error))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 *error = E_FS_COND;
@@ -505,6 +527,8 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
     SET_ERROR;
 }
 
+// Evict a file from the file-system
+//
 // Notes:
 // - if the first extracted file is equal to path, another file should be evicted in its place
 // - the path is owned by the caller
@@ -554,15 +578,19 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         if (errToSet)
         {
             errToSet = E_FS_FAILED_EVICT;
-        } else {
+        }
+        else
+        {
             temp = NULL;
         }
     }
-
-    // if the picket file's path does not correspond to the path argument, or path was NULL, evict it
-    if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
+    else
     {
-        file = List_extractTail(fs->filesList, &errToSet);
+        // if the picket file's path does not correspond to the path argument, or path was NULL, evict the picked file
+        if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
+        {
+            file = List_extractTail(fs->filesList, &errToSet);
+        }
     }
 
     if (!errToSet)
@@ -629,12 +657,12 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
 // Open a file.
 //
-// Note: the `path` variable is owned by the caller
+// Note: the path argument is owned by the caller, so it will be cloned
 ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
 {
 
     int errToSet = 0;
-    int hasFSMutex = 0; // overall mutex
+    int hasFSMutex = 0; // overall (file-system) mutex
     int insertedIntoList = 0;
     int insertedIntoDict = 0;
     int isAlreadyThereFile = 0; // is the file already present in the file-system?
@@ -725,7 +753,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (!errToSet)
         {
-            file->path = malloc(sizeof(*file->path) * (strlen(path) + 1));
+            file->path = malloc(sizeof(char) * (strlen(path) + 1));
             IS_NULL_DO(file->path, { errToSet = E_FS_MALLOC; })
         }
 
@@ -1258,21 +1286,25 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
     return resultFiles;
 }
 
+// Append/Write text to a file
+//
+// Notes:
+// - the path argument is owned by the caller
+// - the content argument is owned by the caller, so it will be cloned
+// - if the write flag is set to 0 the function behaves as append, otherwise it behaves as write
 List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error)
 {
-    // is caller responsibility to free path and content
-    // write 0 === append
-    // write 1 === write
 
     int errToSet = 0;
-    int hasFSMutex = 0;
-    int hasMutex = 0;
-    int hasOrdering = 0;
+    int hasFSMutex = 0;  // overall (file-system) mutex
+    int hasMutex = 0;    // of the file
+    int hasOrdering = 0; // of the file
     int activeWritersUpdated = 0;
 
     File file = NULL;
     List_T evictedFiles = NULL;
 
+    // check arguments
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -1283,11 +1315,13 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // create a list to insert all the evicted files
     if (!errToSet)
     {
         evictedFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
     }
 
+    // acquire the file-system mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -1298,6 +1332,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                     })
     }
 
+    // is there enough overall space for the new content?
     if (!errToSet)
     {
         if (contentSize >= fs->maxStorageSize)
@@ -1306,12 +1341,14 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         }
     }
 
+    // find the desired file
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // acquire its locks
     if (!errToSet)
     {
         hasOrdering = 1;
@@ -1342,12 +1379,14 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         }
     }
 
+    // this function acts as a writer
     if (!errToSet)
     {
         file->activeWriters++;
         activeWritersUpdated = 1;
     }
 
+    // release the file's locks
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -1368,25 +1407,30 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                     })
     }
 
-    // do stuff if it is all alright
+    // if no error has occurred
     if (!errToSet)
     {
 
+        // if I added the content to the file, would I run out of space?
         if (file->size + contentSize >= fs->maxStorageSize)
         {
             errToSet = E_FS_EXCEEDED_SIZE;
         }
 
+        // check if the file was previously locked by someone else
         if (!errToSet && file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
 
+        // if the function behave as write, it can write only if
+        // the previous operation was openFile(path, O_CREATE| O_LOCK)
         if (!errToSet && write && file->ownerCanWrite.id != ownerId.id)
         {
             errToSet = E_FS_FILE_NO_WRITE;
         }
 
+        // check if the client had previously opened the file
         if (!errToSet)
         {
             OwnerId _ownerId;
@@ -1398,6 +1442,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             }
         }
 
+        // evict files until there is enough space
         while (!errToSet && ((fs->currentStorageSize + contentSize) >= fs->maxStorageSize) && fs->currentNumOfFiles != 0)
         {
             ResultFile evicted = FileSystem_evict(fs, file->path, &errToSet);
@@ -1407,21 +1452,28 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             }
         }
 
+        // increase the file's space
         if (!errToSet)
         {
+            // printf("file->size: %d --- contentSize: %d\n", file->size, contentSize);
+            // file->size && printf("FILE DATA before realloc: %.*s\n", (int)file->size, file->data);
             NON_ZERO_DO(realloca(&file->data, file->size + contentSize), {
                 errToSet = E_FS_MALLOC;
             })
+            // file->size &&printf("FILE DATA after realloc: %.*s\n", (int)file->size, file->data);
         }
 
+        // clone the new content and update the file's info
         if (!errToSet)
         {
             memcpy(file->data + file->size, content, contentSize);
             file->size += contentSize;
+            // file->size && printf("FILE DATA after memcpy: %.*s\n", (int)file->size, file->data);
             fs->currentStorageSize += contentSize;
             file->ownerCanWrite.id = 0;
         }
 
+        // if the LRU replacement policy was enabled, put this file on top of the list
         if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
         {
             struct File temp;
@@ -1429,6 +1481,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
         }
 
+        // release the overall lock
         if (hasFSMutex)
         {
             hasFSMutex = 0;
@@ -1440,6 +1493,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         }
     }
 
+    // acquire again the file's mutex
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
@@ -1450,6 +1504,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                     })
     }
 
+    // end of work
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
     {
         file->activeWriters--;
@@ -1469,11 +1524,14 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                     })
     }
 
+    // if an error has occurred, the evictedFiles list may be inconsistent
+    // so it will be erased
     if (errToSet)
     {
         evictedFiles ? List_free(&evictedFiles, 1, NULL) : (void)NULL;
     }
 
+    // always release the overall lock
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
@@ -2304,6 +2362,70 @@ size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error)
 
     SET_ERROR;
     return numOfFiles;
+}
+
+Paths ResultFile_getStoredFilesPaths(FileSystem fs, int *error)
+{
+
+    int errToSet = 0;
+    int hasFSMutex = 1; // overall mutex
+    Paths ps = NULL;
+
+    if (fs == NULL)
+    {
+        errToSet = E_FS_NULL_FS;
+    }
+
+    if (!errToSet)
+    {
+        ps = malloc(sizeof(*ps));
+        IS_NULL_DO_ELSE(ps, errToSet = E_FS_MALLOC,
+                        {
+                            ps->index = 0;
+                            ps->paths = NULL;
+                        })
+    }
+
+    if (!errToSet)
+    {
+        NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 0;
+                    })
+    }
+
+    if (!errToSet)
+    {
+        ps->paths = calloc(fs->currentNumOfFiles + 1, sizeof(*ps->paths));
+        IS_NULL_DO(ps->paths, errToSet = E_FS_MALLOC);
+    }
+
+    if (!errToSet)
+    {
+        List_forEachWithContext(fs->filesList, extractPaths, ps, &errToSet);
+    }
+
+    if (errToSet)
+    {
+        errToSet = E_FS_GENERAL;
+        ps ? free(ps->paths) : (void)NULL;
+        free(ps);
+        ps = NULL;
+    }
+
+    if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    {
+        hasFSMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&fs->overallMutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasFSMutex = 1;
+                    })
+    }
+
+    SET_ERROR;
+    return ps;
 }
 
 const char *filesystem_error_messages[] = {
