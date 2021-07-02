@@ -197,7 +197,8 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
         }
         if (file->ownerCanWrite.id == oid->id)
         {
-            file->ownerCanWrite.id == 0;
+            // this functions invalidates the ability to write on the file
+            file->ownerCanWrite.id = 0;
         }
 
         oidToFree = List_searchExtract(file->openedBy, ownerIdComparator, &oid, error);
@@ -303,7 +304,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
 
     if (!(*error))
     {
-        while (file->activeWriters > 0 || !(*error))
+        while (file->activeWriters > 0 && !(*error))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 *error = E_FS_COND;
@@ -387,6 +388,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
 
     if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
     {
+        // this functions invalidates the ability to write on the file
         file->ownerCanWrite.id = 0;
         if (activeReadersUpdated)
         {
@@ -804,7 +806,9 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
 
         if (!errToSet)
-        {
+        {   
+            // the client is able to write on the file only if the previous operation was the open one
+            // with both the flags enabled
             file->ownerCanWrite.id = createFlag && lockFlag ? ownerId.id : 0;
             fs->currentNumOfFiles++;
         }
@@ -939,9 +943,9 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                 insertIntoList = 1;
             }
 
-            // eventually reset ownerCanWrite
             if (!errToSet && isAlreadyThereFile)
             {
+                // this functions invalidates the ability to write on the file if it was already present
                 file->ownerCanWrite.id = 0;
             }
 
@@ -1082,7 +1086,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
-        while (file->activeWriters > 0 || !errToSet)
+        while (file->activeWriters > 0 && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1135,6 +1139,9 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
+        // this functions invalidates the ability to write on the file
+        file->ownerCanWrite.id = 0;
+
         resultFile = malloc(sizeof(*resultFile));
         IS_NULL_DO(resultFile, { errToSet = E_FS_MALLOC; })
     }
@@ -1174,7 +1181,6 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
-        file->ownerCanWrite.id = 0;
         if (activeReadersUpdated)
         {
             file->activeReaders--;
@@ -1455,12 +1461,9 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         // increase the file's space
         if (!errToSet)
         {
-            // printf("file->size: %d --- contentSize: %d\n", file->size, contentSize);
-            // file->size && printf("FILE DATA before realloc: %.*s\n", (int)file->size, file->data);
             NON_ZERO_DO(realloca(&file->data, file->size + contentSize), {
                 errToSet = E_FS_MALLOC;
             })
-            // file->size &&printf("FILE DATA after realloc: %.*s\n", (int)file->size, file->data);
         }
 
         // clone the new content and update the file's info
@@ -1468,8 +1471,9 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
         {
             memcpy(file->data + file->size, content, contentSize);
             file->size += contentSize;
-            // file->size && printf("FILE DATA after memcpy: %.*s\n", (int)file->size, file->data);
             fs->currentStorageSize += contentSize;
+
+            // this functions invalidates the ability to write on the file
             file->ownerCanWrite.id = 0;
         }
 
@@ -1546,17 +1550,19 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     return evictedFiles;
 }
 
+// Logically lock a file
+//
+// Note: the path argument is owned by the caller
 void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path
-
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // file-system mutex
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
     File file = NULL;
 
+    // arguments check
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -1567,6 +1573,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // acquire the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -1577,12 +1584,14 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
+    // find the file inside the file-system
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // acquire file's locks
     if (!errToSet)
     {
         hasOrdering = 1;
@@ -1603,6 +1612,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
+    // unlock the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 0;
@@ -1615,7 +1625,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
     if (!errToSet)
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1623,12 +1633,14 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         }
     }
 
+    // this function acts as a writer
     if (!errToSet)
     {
         file->activeWriters++;
         activeWritersUpdated = 1;
     }
 
+    // release file's locks
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -1649,10 +1661,14 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
-    // do stuff if it is all alright
+    // if no error has occurred, try to lock the file
     if (!errToSet)
     {
-        if (!errToSet && file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0)
+        // this functions invalidates the ability to write on the file
+        file->ownerCanWrite.id = 0;
+
+        // if the file was already locked by someone else, enter the waiting list (file->waitingLockers)
+        if (file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0)
         {
 
             OwnerId *oid = malloc(sizeof(*oid));
@@ -1668,7 +1684,6 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
                 if (!errToSet && present)
                 {
-                    // non dovrebbe essere possibile perché il client attende la lock senza fare ulteriori richieste
                     errToSet = E_FS_FILE_ALREADY_LOCKED;
                 }
 
@@ -1678,6 +1693,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                 }
                 else
                 {
+                    // an error is returned anyway as feedback
                     errToSet = E_FS_FILE_IS_LOCKED;
                 }
             }
@@ -1687,16 +1703,19 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
             }
         }
 
+        // if the file was already locked by the requestor an error is returned anyway as feedback
         if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
         {
             errToSet = E_FS_FILE_ALREADY_LOCKED;
         }
 
+        // if the file was not locked by anyone, lock it
         if (!errToSet && file->currentlyLockedBy.id == 0)
         {
             file->currentlyLockedBy.id = ownerId.id;
         }
 
+        // in case of LRU policy, put the file on top of the list
         if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
         {
             struct File temp;
@@ -1705,6 +1724,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         }
     }
 
+    // acquire the file's mutex lock
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
@@ -1715,6 +1735,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
+    // work is done
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
     {
         file->activeWriters--;
@@ -1734,6 +1755,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
+    // always release the overall mutex
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
@@ -1747,12 +1769,15 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     SET_ERROR;
 }
 
+// Logically unlock a file
+//
+// Notes:
+// - the path argument is owned by the caller
+// - if an OwnerId is returned, it corresponds to the waiting client that has gained the lock on the file
 OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path and the owner id returned
-
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // file-system mutex
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
@@ -1760,6 +1785,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     OwnerId *oidToRet = NULL;
     File file = NULL;
 
+    // arguments check
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -1770,6 +1796,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // acquire the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -1780,12 +1807,14 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // find the file
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // acquire the file's mutexes
     if (!errToSet)
     {
         hasOrdering = 1;
@@ -1806,6 +1835,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // release the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 0;
@@ -1818,7 +1848,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1826,12 +1856,14 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
+    // this function acts as a writer
     if (!errToSet)
     {
         file->activeWriters++;
         activeWritersUpdated = 1;
     }
 
+    // release the file's mutexes
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -1852,27 +1884,34 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
-    // do stuff if it is all alright
+    // if no error has occurred
     if (!errToSet)
     {
+        // this functions invalidates the ability to write on the file
+        file->ownerCanWrite.id = 0;
 
+        // fail if the file was locked by someone else
         if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
 
+        // fail if the file was not locked bt anyone
         if (!errToSet && file->currentlyLockedBy.id == 0)
         {
             errToSet = E_FS_FILE_NOT_LOCKED;
         }
 
+        // if the requestor has locked the file
         if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
         {
             int listLength = List_length(file->waitingLockers, &errToSet);
             int lockedOwnerToSet = 0;
 
+            // if someone else was waiting to set the lock on the file...
             if (!errToSet && listLength >= 1)
             {
+                // ...extract it from the waiting list
                 oidToRet = List_extractHead(file->waitingLockers, &errToSet);
                 if (!errToSet)
                 {
@@ -1884,9 +1923,11 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                 }
             }
 
+            // set the extracted id as the current logical locker or reset the latter one
             file->currentlyLockedBy.id = lockedOwnerToSet;
         }
 
+        // in case of LRU policy, put the file on top of the list
         if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
         {
             struct File temp;
@@ -1895,6 +1936,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
+    // acquire the mutex lock of the file
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
@@ -1905,11 +1947,13 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // work is done
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
     {
         file->activeWriters--;
     }
 
+    // release and signal
     if (hasMutex)
     {
         NON_ZERO_DO(pthread_cond_signal(&file->go), {
@@ -1924,6 +1968,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // always release the overall mutex
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
@@ -2007,7 +2052,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 
     if (!errToSet)
     {
-        while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -2172,7 +2217,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
                     })
     }
 
-    while (file->activeReaders > 0 || file->activeWriters > 0 || !errToSet)
+    while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
     {
         NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
             errToSet = E_FS_COND;
@@ -2286,6 +2331,7 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
     SET_ERROR
 }
 
+// Get the total size in bytes of the file-system
 size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error)
 {
     int errToSet = 0;
@@ -2325,6 +2371,7 @@ size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error)
     return size;
 }
 
+// Get the total number of files stored inside the file-system
 size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error)
 {
     int errToSet = 0;
@@ -2364,6 +2411,7 @@ size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error)
     return numOfFiles;
 }
 
+// Get all the files' path stored inside the file-system
 Paths ResultFile_getStoredFilesPaths(FileSystem fs, int *error)
 {
 
