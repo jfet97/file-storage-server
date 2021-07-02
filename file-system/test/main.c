@@ -13,18 +13,19 @@
 #include <sys/types.h>
 
 #define USED_POLICY FS_REPLACEMENT_FIFO
-#define MAX_STORAGE_SIZE 128
+#define MAX_STORAGE_SIZE 130
 #define MAX_NUM_OF_FILES 3
 #define PATH_FILE_1 "/folder1/file1.txt"
 #define CONTENT_FILE_1 "1234567890" // 11
 #define PATH_FILE_2 "/folder2/file2.txt"
-#define CONTENT_FILE_2 "2345678901" // 11
+#define CONTENT_FILE_2 "2345678901"                                                                                                          // 11
 #define LONG_CONTENT_FILE_2 "23456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901" // 111
 #define PATH_FILE_3 "/folder3/file3.txt"
 #define CONTENT_FILE_3 "3456789012" // 11
 #define PATH_FILE_4 "/folder4/file4.txt"
 #define CONTENT_FILE_4 "4567890123" // 11
-#define SMALL_TEXT "123" // 4
+#define SMALL_TEXT "123"            // 4
+#define VOID_TEXT ""                // 1
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
@@ -85,7 +86,7 @@ int main(void)
     List_T rfs = NULL;
     OwnerId *oid = NULL;
 
-        FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1), client_1, 1, &error), rfs, &error);
 
     puts("next should fail");
@@ -134,11 +135,29 @@ int main(void)
     oid = FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
     printf("%d should be %d\n", client_2.id, oid->id);
     free(oid);
+    PRINT_FS_STATS(fs, error);
 
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, SMALL_TEXT, strlen(SMALL_TEXT) + 1, client_2, 0, &error), rfs, &error);
-    
+    FileSystem_unlockFile(fs, PATH_FILE_2, client_2, &error);
+    PRINT_FS_STATS(fs, error);
 
-
+    FileSystem_closeFile(fs, PATH_FILE_2, client_1, &error);
+    puts("next should fail");
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_1, 0, &error), rfs, &error); // should fail
+    print(&error);
+    puts("next should fail");
+    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_1, &error); // should fail
+    print(&error);
+    puts("next should fail");
+    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE, client_1, &error); // should fail
+    print(&error);
+    FileSystem_openFile(fs, PATH_FILE_2, O_LOCK, client_1, &error);
+    puts("next should fail");
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_2, 0, &error), rfs, &error); // should fail
+    print(&error);
+    FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
+    FileSystem_closeFile(fs, PATH_FILE_2, client_1, &error);
+    print(&error);
     PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);
