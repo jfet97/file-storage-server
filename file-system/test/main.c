@@ -104,13 +104,12 @@ int main(void)
 
     // FIFO: PATH_FILE_1 will be evicted
     rf = FileSystem_openFile(fs, PATH_FILE_4, O_CREATE | O_LOCK, client_2, &error);
+    puts(rf->path);
+    puts(rf->data);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, strlen(CONTENT_FILE_4) + 1, client_2, 1, &error), rfs, &error);
     puts("next should fail");
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, strlen(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error); // should fail
     print(&error);
-
-    // puts(rf->path);
-    // puts(rf->data);
     ResultFile_free(&rf, &error);
     PRINT_FS_STATS(fs, error);
 
@@ -158,6 +157,12 @@ int main(void)
     FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
     FileSystem_closeFile(fs, PATH_FILE_2, client_1, &error);
     print(&error);
+    PRINT_FS_STATS(fs, error);
+
+    rf = FileSystem_readFile(fs, PATH_FILE_2, client_2, &error);
+    puts(rf->path);
+    puts(rf->data);
+    ResultFile_free(&rf, &error);
     PRINT_FS_STATS(fs, error);
 
     FileSystem_delete(&fs, &error);

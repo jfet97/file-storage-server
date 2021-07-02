@@ -1122,7 +1122,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
-        if (file->currentlyLockedBy.id != ownerId.id)
+        if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
         {
             errToSet = E_FS_FILE_IS_LOCKED;
         }
