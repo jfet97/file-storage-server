@@ -1983,17 +1983,20 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     return oidToRet;
 }
 
+// Close a file
+//
+// Notes:
+// - the path argument is owned by the caller
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path
-
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // overall mutex
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeWritersUpdated = 0;
     File file = NULL;
 
+    // arguments check
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -2004,6 +2007,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // acquire the file-system mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -2014,12 +2018,14 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
+    // find the file
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // acquire the file's mutexes
     if (!errToSet)
     {
         hasOrdering = 1;
@@ -2040,6 +2046,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
+    // release the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 0;
@@ -2060,12 +2067,14 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         }
     }
 
+    // this function acts as a writer
     if (!errToSet)
     {
         file->activeWriters++;
         activeWritersUpdated = 1;
     }
 
+    // release the file's mutexes
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -2086,35 +2095,29 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
-    // do stuff if it is all alright
+    // if no error has occurred
     if (!errToSet)
     {
-
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
-        // int lockedByOthers = (file->currentlyLockedBy.id != ownerId.id && file->currentlyLockedBy.id != 0);
-
+        
+        // To close a file it has to be opened before
         if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
         {
             errToSet = E_FS_FILE_NOT_OPENED;
         }
 
-        // if (!errToSet && lockedByOthers)
-        // {
-        //     errToSet = E_FS_FILE_IS_LOCKED;
-        // }
-
-        // if (!errToSet && !lockedByOthers)
         if (!errToSet)
         {
             OwnerId *ext = List_searchExtract(file->openedBy, ownerIdComparator, &_ownerId, &errToSet);
             if (!errToSet)
             {
-                // The client has passed the "has opened the file" control, so 'ext' won't be NULL
+                //the "has opened the file?" control was passed, so 'ext' won't be NULL
                 free(ext);
             }
         }
 
+        // in case of LRU policy, put the file on top of the list
         if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
         {
             struct File temp;
@@ -2123,6 +2126,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         }
     }
 
+    // acquire again the file's mutex
     if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasMutex = 1;
@@ -2133,11 +2137,13 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
+    // work is done
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
     {
         file->activeWriters--;
     }
 
+    // release the file's mutex and signal
     if (hasMutex)
     {
         NON_ZERO_DO(pthread_cond_signal(&file->go), {
@@ -2152,6 +2158,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
+    // always release the overall mutex
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;

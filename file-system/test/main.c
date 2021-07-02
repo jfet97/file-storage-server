@@ -69,6 +69,13 @@ void print(int *error)
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
 // TODO: commentare il file-system, check delle condizioni nei cicli, check degli errori della lista
 // TODO: occhio a dove imposti file->ownerCanWrite.id = 0; nelle due read, da spostare poi
+// che succede se faccio un lock/unlock dopo la close? sia da un altro client che dal medesimo
+
+// invarianti:
+// non posso aprire un file lockato da qualcun'altro
+// posso aprire/chiudere un file non lockato
+// posso lockare/unlockare un file che non ho aperto
+// non posso lockare immediatamente un file lockato da altri, mi metto in attesa
 
 int main(void)
 {
