@@ -79,6 +79,12 @@ struct ReadNFileLRUContext
     List_T files;
 };
 
+struct EvictClientContext
+{
+    OwnerId oid;
+    List_T oidsHaveLocks;
+};
+
 // Callback used to free a list of files
 void fileDeallocator(void *rawFile)
 {
@@ -134,11 +140,11 @@ void extractPaths(void *rawPaths, void *rawFile, int *error)
 // Callback used to evict a client from the structures of a file
 //
 // Note: the caller must own the file-system lock
-void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
+void evictClientInternal(void *rawCtx, void *rawFile, int *error)
 {
-
-    OwnerId *oid = rawOwnerId;
+    struct EvictClientContext *ctx = rawCtx;
     OwnerId *oidToFree = NULL;
+    OwnerId *oidToGiveLock = NULL;
     File file = rawFile;
     int hasMutex = 0;
     int hasOrdering = 0;
@@ -205,33 +211,45 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     if (!(*error))
     {
         // unlock the file if it was locked by the ownerId to evict
-        if (file->currentlyLockedBy.id == oid->id)
+        if (file->currentlyLockedBy.id == ctx->oid.id)
         {
             file->currentlyLockedBy.id == 0;
         }
         // reset the write flag
-        if (file->ownerCanWrite.id == oid->id)
+        if (file->ownerCanWrite.id == ctx->oid.id)
         {
             file->ownerCanWrite.id = 0;
         }
 
-        // search the ownerId inside the openedBy list and extract it...
-        oidToFree = List_searchExtract(file->openedBy, ownerIdComparator, &oid, error);
-    }
+        // replace the locker if there were anyone else in the waiting list
+        oidToGiveLock = List_pickHead(file->waitingLockers, error);
+        if (!(*error) && oidToGiveLock)
+        {
+            file->currentlyLockedBy.id = oidToGiveLock->id;
+            // return the id that has gained the file's logic lock to the caller
+            List_insertHead(ctx->oidsHaveLocks, oidToGiveLock, error);
+        }
 
-    if (!(*error))
-    {   
-        // ...free it if it was found...
-        (oidToFree ? free(oidToFree) : (void)NULL);
-        oidToFree = NULL;
-        // ...then search it inside the waitingLockers list...
-        oidToFree = List_searchExtract(file->waitingLockers, ownerIdComparator, &oid, error);
-    }
+        if (!(*error))
+        {
+            // search the ownerId inside the openedBy list and extract it...
+            oidToFree = List_searchExtract(file->openedBy, ownerIdComparator, &(ctx->oid), error);
+        }
 
-    if (!(*error))
-    {
-        // ...free it if it was found
-        (oidToFree ? free(oidToFree) : (void)NULL);
+        if (!(*error))
+        {
+            // ...free it if it was found...
+            (oidToFree ? free(oidToFree) : (void)NULL);
+            oidToFree = NULL;
+            // ...then search it inside the waitingLockers list...
+            oidToFree = List_searchExtract(file->waitingLockers, ownerIdComparator, &(ctx->oid), error);
+        }
+
+        if (!(*error))
+        {
+            // ...free it if it was found
+            (oidToFree ? free(oidToFree) : (void)NULL);
+        }
     }
 
     // acquire the file mutex
@@ -2419,11 +2437,13 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 // Remove the presence of a client (ownerId) from all the structures inside the file-system
 //
 // Note: never release the file-system mutex because we visit and may modify lot of files'structures
-void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
+List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
 {
 
     int errToSet = 0;
     int hasFSMutex = 0; // file-system (overall) mutex
+    struct EvictClientContext ctx;
+    List_T oidsHaveLocks = NULL;
 
     // argument check
     if (fs == NULL)
@@ -2442,11 +2462,25 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
                     })
     }
 
-    // evict the client from every-where in the file-system
-    List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
+    // initialize the context
+    if (!errToSet)
+    {
+        ctx.oid.id = ownerId.id;
+        // a list of OwnerIds does not need a custom Deallocator function
+        oidsHaveLocks = List_create(NULL, NULL, NULL, &errToSet);
+        ctx.oidsHaveLocks = oidsHaveLocks;
+    }
 
+    if (!errToSet)
+    {
+        // evict the client from every-where in the file-system
+        List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
+    }
+
+    // if a list error has occurred, map it into a file-system error and destroy the oidsHaveLocks list that may be inconsistent
     if (errToSet)
     {
+        List_free(oidsHaveLocks, 1, &errToSet);
         errToSet = E_FS_GENERAL;
     }
 
@@ -2462,6 +2496,7 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     }
 
     SET_ERROR;
+    return oidsHaveLocks;
 }
 
 // Free a ResultFile structure
