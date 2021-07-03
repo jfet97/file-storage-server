@@ -29,6 +29,15 @@
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
+void printFile(void * rawFile, int* _) {
+    ResultFile f = rawFile;
+    puts("------------------------");
+    puts("Resulting file:");
+    puts(f->path);
+    puts(f->data);
+    puts("------------------------");
+}
+
 #define PRINT_FS_STATS(FS, E)                                              \
     puts("-----------------------------------\nSTART FS STATS\n");         \
     printf("NUM OF FILES: %d\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
@@ -56,7 +65,16 @@
         List_free(&R, 1, E);       \
     }
 
-void print(int *error)
+#define PRINT_APPEND_RES(A, R, E) \
+    R = A;                         \
+    if (R)                         \
+    {                              \
+        List_forEach(R, printFile, E); \
+        List_free(&R, 1, E);       \
+    }
+
+    void
+    print(int *error)
 {
     if (error && *error)
     {
@@ -68,14 +86,16 @@ void print(int *error)
 // TODO: test dei flag
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
 // TODO: commentare il file-system, check delle condizioni nei cicli, check degli errori della lista
-// TODO: occhio a dove imposti file->ownerCanWrite.id = 0; nelle due read, da spostare poi
-// che succede se faccio un lock/unlock dopo la close? sia da un altro client che dal medesimo
+// TODO: occhio a dove imposti file->ownerCanWrite.id = 0; nelle due read, da spostare poi0
 
 // invarianti:
 // non posso aprire un file lockato da qualcun'altro
 // posso aprire/chiudere un file non lockato
 // posso lockare/unlockare un file che non ho aperto
 // non posso lockare immediatamente un file lockato da altri, mi metto in attesa
+// non posso leggere un file lockato da un altro
+// non posso rimuovere un file che non ho lockato
+// posso chiudere un file lockato da altri
 
 int main(void)
 {
@@ -121,7 +141,7 @@ int main(void)
     PRINT_FS_STATS(fs, error);
 
     // FIFO: PATH_FILE_4, PATH_FILE_3, will be evicted
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, LONG_CONTENT_FILE_2, strlen(LONG_CONTENT_FILE_2), client_2, 0, &error), rfs, &error);
+    PRINT_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, LONG_CONTENT_FILE_2, strlen(LONG_CONTENT_FILE_2), client_2, 0, &error), rfs, &error);
     PRINT_FS_STATS(fs, error);
 
     FileSystem_unlockFile(fs, PATH_FILE_2, client_2, &error);

@@ -53,13 +53,13 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
 void FileSystem_delete(FileSystem *fsPtr, int *error);
 ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error);
 ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
-List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error);
+List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error); // TODO
 List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error);
 void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 OwnerId* FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
-void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
-void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error);
+void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error); // TODO
+void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error); // TODO
 void ResultFile_free(ResultFile* rfPtr, int* error);
 size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error);
 size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error);

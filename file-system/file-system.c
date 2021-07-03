@@ -39,10 +39,10 @@ struct File
     char *data;
     size_t size;
 
-    OwnerId currentlyLockedBy; // OwnerId, 0 if no owner
-    OwnerId ownerCanWrite;     // OwnerId, 0 if no owner
-    List_T waitingLockers;     // OwnerIds
-    List_T openedBy;           // OwnerIds
+    OwnerId currentlyLockedBy; // OwnerId (client id), 0 if no owner
+    OwnerId ownerCanWrite;     // OwnerId (client id), 0 if no owner
+    List_T waitingLockers;     // OwnerIds (client ids)
+    List_T openedBy;           // OwnerIds (client ids)
 
     size_t activeReaders;
     size_t activeWriters;
@@ -51,35 +51,6 @@ struct File
     pthread_mutex_t ordering;
     pthread_cond_t go;
 };
-
-struct ReadNFileSetResultFilesContext
-{
-    List_T resultFiles;
-    int counter;
-    OwnerId ownerId;
-};
-
-struct ReadNFileLRUContext
-{
-    List_T files;
-};
-
-void fileDeallocator(void *rawFile)
-{
-    File file = rawFile;
-    free(file->path);
-    free(file->data);
-    // free also the ownerIds inside the lists
-    List_free(&(file->waitingLockers), 1, NULL);
-    List_free(&(file->openedBy), 1, NULL);
-}
-
-void fileResultDeallocator(void *rawFile)
-{
-    ResultFile file = rawFile;
-    free(file->path);
-    free(file->data);
-}
 
 struct FileSystem
 {
@@ -96,6 +67,38 @@ struct FileSystem
     pthread_mutex_t overallMutex;
 };
 
+struct ReadNFileSetResultFilesContext
+{
+    List_T resultFiles;
+    int counter;
+    OwnerId ownerId;
+};
+
+struct ReadNFileLRUContext
+{
+    List_T files;
+};
+
+// Callback used to free a list of files
+void fileDeallocator(void *rawFile)
+{
+    File file = rawFile;
+    free(file->path);
+    free(file->data);
+    // free also the ownerIds inside the lists
+    List_free(&(file->waitingLockers), 1, NULL);
+    List_free(&(file->openedBy), 1, NULL);
+}
+
+// Callback used to free a list of resultFiles
+void fileResultDeallocator(void *rawFile)
+{
+    ResultFile file = rawFile;
+    free(file->path);
+    free(file->data);
+}
+
+// Callback used to compare two OwnerIds
 int ownerIdComparator(void *rawO1, void *rawO2)
 {
     OwnerId *o1 = rawO1;
@@ -104,6 +107,7 @@ int ownerIdComparator(void *rawO1, void *rawO2)
     return o1->id == o2->id;
 }
 
+// Callback used to compare two files' paths
 int filePathComparator(void *rawf1, void *rawf2)
 {
     File f1 = rawf1;
@@ -112,6 +116,9 @@ int filePathComparator(void *rawf1, void *rawf2)
     return strcmp(f1->path, f2->path) == 0;
 }
 
+// Callback used to extract the paths of a list of file
+//
+// Note: the caller must own the file-system mutex
 void extractPaths(void *rawPaths, void *rawFile, int *error)
 {
     // precondition: has overall mutex
@@ -124,6 +131,9 @@ void extractPaths(void *rawPaths, void *rawFile, int *error)
     }
 }
 
+// Callback used to ???
+//
+// Note: the caller must own the file-system lock
 void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 {
     // precondition: has overall mutex
@@ -242,6 +252,7 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     }
 }
 
+// Wrapper for the standard realloc function
 int realloca(char **buf, size_t newsize)
 {
     int toRet = 0;
@@ -422,9 +433,11 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     }
 }
 
+// Callback used to put on top of the file-system list a list of files
+//
+// Note: it is used in a context where the file-system mutex was previously acquired
 void moveFilesLRU(void *rawCtx, void *rawResultFile, int *error)
 {
-    // assumption: it has overall mutex
     if (*error)
     {
         return;
@@ -439,17 +452,20 @@ void moveFilesLRU(void *rawCtx, void *rawResultFile, int *error)
     List_insertHead(ctx->files, List_searchExtract(ctx->files, filePathComparator, &temp, NULL), error);
 }
 
+// Create a new file-system
 FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int replacementPolicy, int *error)
 {
     int errToSet = 0;
     size_t bucketsNum = maxNumOfFiles > MAX_NUM_OF_BUCKETS ? MAX_NUM_OF_BUCKETS : maxNumOfFiles;
     FileSystem fs = NULL;
 
+    // chech the replacementPolicy argument
     if (replacementPolicy != FS_REPLACEMENT_FIFO && replacementPolicy != FS_REPLACEMENT_LRU)
     {
         errToSet = E_FS_UNKNOWN_REPL;
     }
 
+    // alloc a new file-system
     if (!errToSet)
     {
         fs = malloc(sizeof(*fs));
@@ -459,13 +475,13 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
         })
     }
 
+    // create the internal list of files, mainly used for the replacement policies
     if (!errToSet)
     {
-        // the filesDict is responsible of freeing the File entries and the string keys
-        // others ops are not needed
         fs->filesList = List_create(NULL, NULL, fileDeallocator, &errToSet);
     }
 
+    // create the internal dictionary of files, it enables a faster search
     if (!errToSet)
     {
         // the default hash and compare functions are enough for our needs
@@ -477,6 +493,7 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
         })
     }
 
+    // set the file system
     if (!errToSet)
     {
         fs->maxNumOfFiles = maxNumOfFiles;
@@ -490,6 +507,7 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
         })
     }
 
+    // in case of error destroy all
     if (errToSet)
     {
         fs && (fs->filesDict) ? icl_hash_destroy(fs->filesDict, NULL, NULL) : 0;
@@ -501,18 +519,21 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
     return fs;
 }
 
-// Note: a precondition is that this function must be called when all but one threads have died => no mutex is required
+// Destroy a file-system
+// Note: this function must be called only when all but one threads have died => no mutex is required
 void FileSystem_delete(FileSystem *fsPtr, int *error)
 {
 
     int errToSet = 0;
     FileSystem fs = NULL;
 
+    // arguments check
     if (fsPtr == NULL || *fsPtr == NULL)
     {
         errToSet = E_FS_NULL_FS;
     }
 
+    // free what has to be freed
     if (!errToSet)
     {
         fs = *fsPtr;
@@ -662,7 +683,6 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 // Note: the path argument is owned by the caller, so it will be cloned
 ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId ownerId, int *error)
 {
-
     int errToSet = 0;
     int hasFSMutex = 0; // overall (file-system) mutex
     int insertedIntoList = 0;
@@ -716,6 +736,19 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (file != NULL)
         {
             isAlreadyThereFile = 1;
+        }
+    }
+
+    // in case of LRU policy, put the file (if it already exists) on top of the list
+    if (!errToSet && isAlreadyThereFile && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct File temp;
+        temp.path = file->path;
+        List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+
+        if (errToSet)
+        {
+            errToSet = E_FS_GENERAL;
         }
     }
 
@@ -806,7 +839,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
 
         if (!errToSet)
-        {   
+        {
             // the client is able to write on the file only if the previous operation was the open one
             // with both the flags enabled
             file->ownerCanWrite.id = createFlag && lockFlag ? ownerId.id : 0;
@@ -1008,12 +1041,15 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
     return evictedFile;
 }
 
+// Read a file
+//
+// Notes:
+// - the client must have opened the file before
+// - the path argument is owned by the caller
 ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // the client must have opened the file before
-    // is caller responsibility to free path
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // overall mutex
     int hasMutex = 0;
     int hasOrdering = 0;
     int activeReadersUpdated = 0;
@@ -1021,6 +1057,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     File file = NULL;
     ResultFile resultFile = NULL;
 
+    // check arguments
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -1031,6 +1068,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // acquire overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -1041,12 +1079,14 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // find the file
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // in case of LRU policy, place the file on top of the list
     if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
     {
         struct File temp;
@@ -1054,6 +1094,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
     }
 
+    // acquire the file's mutexes
     if (!errToSet)
     {
         hasOrdering = 1;
@@ -1074,6 +1115,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // release the file-system mutex
     if (hasFSMutex)
     {
         hasFSMutex = 0;
@@ -1094,12 +1136,14 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
+    // this function acts as a reader
     if (!errToSet)
     {
         file->activeReaders++;
         activeReadersUpdated = 1;
     }
 
+    // release the file's mutexes
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -1120,6 +1164,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // fail if the file was locked by someone else
     if (!errToSet)
     {
         if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
@@ -1128,6 +1173,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
+    // fail if the file was not opened by the requestor
     if (!errToSet)
     {
         int alreadyOpened = List_search(file->openedBy, List_getComparator(file->openedBy, NULL), &ownerId, &errToSet);
@@ -1137,6 +1183,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
+    // create the result
     if (!errToSet)
     {
         // this functions invalidates the ability to write on the file
@@ -1146,6 +1193,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         IS_NULL_DO(resultFile, { errToSet = E_FS_MALLOC; })
     }
 
+    // fulfill the result
     if (!errToSet)
     {
         resultFile->size = file->size;
@@ -1169,6 +1217,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         memcpy(resultFile->path, file->path, strlen(file->path) + 1);
     }
 
+    // acquire the file's lock
     if (!errToSet)
     {
         hasMutex = 1;
@@ -1179,6 +1228,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // work is done
     if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         if (activeReadersUpdated)
@@ -1194,17 +1244,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         }
     }
 
-    if (hasMutex)
-    {
-        hasMutex = 0;
-
-        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
-                    {
-                        errToSet = E_FS_MUTEX;
-                        hasMutex = 1;
-                    })
-    }
-
+    // in case of errors, destroy the result
     if (errToSet && resultFile)
     {
         resultFile->data ? free(resultFile->data) : (void)NULL;
@@ -1612,6 +1652,14 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                     })
     }
 
+    // in case of LRU policy, put the file on top of the list
+    if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct File temp;
+        temp.path = file->path;
+        List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+    }
+
     // unlock the overall mutex
     if (!errToSet)
     {
@@ -1713,14 +1761,6 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         if (!errToSet && file->currentlyLockedBy.id == 0)
         {
             file->currentlyLockedBy.id = ownerId.id;
-        }
-
-        // in case of LRU policy, put the file on top of the list
-        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
-        {
-            struct File temp;
-            temp.path = file->path;
-            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
         }
     }
 
@@ -1835,6 +1875,14 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     })
     }
 
+    // in case of LRU policy, put the file on top of the list
+    if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct File temp;
+        temp.path = file->path;
+        List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+    }
+
     // release the overall mutex
     if (!errToSet)
     {
@@ -1925,14 +1973,6 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
             // set the extracted id as the current logical locker or reset the latter one
             file->currentlyLockedBy.id = lockedOwnerToSet;
-        }
-
-        // in case of LRU policy, put the file on top of the list
-        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
-        {
-            struct File temp;
-            temp.path = file->path;
-            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
         }
     }
 
@@ -2046,6 +2086,14 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                     })
     }
 
+    // in case of LRU policy, put the file on top of the list
+    if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
+    {
+        struct File temp;
+        temp.path = file->path;
+        List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+    }
+
     // release the overall mutex
     if (!errToSet)
     {
@@ -2100,7 +2148,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     {
         OwnerId _ownerId;
         _ownerId.id = ownerId.id;
-        
+
         // To close a file it has to be opened before
         if (!List_search(file->openedBy, ownerIdComparator, &_ownerId, NULL))
         {
@@ -2115,14 +2163,6 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
                 //the "has opened the file?" control was passed, so 'ext' won't be NULL
                 free(ext);
             }
-        }
-
-        // in case of LRU policy, put the file on top of the list
-        if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
-        {
-            struct File temp;
-            temp.path = file->path;
-            List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
         }
     }
 
@@ -2172,17 +2212,18 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     SET_ERROR;
 }
 
+// Remove a file from the file-system
+//
+// Note: never release the file-system mutex because we don't want another
+// client waiting on a lock that is going to be destroyed
 void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
-    // is caller responsibility to free path
-    // tengo la lock globale perche' devo distruggere le mutex del file e non voglio che altri thread
-    // siano in attesa su esse
-
     int errToSet = 0;
-    int hasFSMutex = 1;
+    int hasFSMutex = 1; // overall mutex
 
     File file = NULL;
 
+    // arguments check
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
@@ -2193,6 +2234,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         errToSet = E_FS_INVALID_ARGUMENTS;
     }
 
+    // acquire the file-system mutex
     if (!errToSet)
     {
         NON_ZERO_DO(pthread_mutex_lock(&fs->overallMutex),
@@ -2202,12 +2244,14 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
                     })
     }
 
+    // find the file
     if (!errToSet)
     {
         file = icl_hash_find(fs->filesDict, path);
         IS_NULL_DO(file, { errToSet = E_FS_FILE_NOT_FOUND; })
     }
 
+    // acquire the file's locks
     if (!errToSet)
     {
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
@@ -2231,16 +2275,19 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         })
     }
 
+    // fail if the file was locked by someone else
     if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
     {
         errToSet = E_FS_FILE_IS_LOCKED;
     }
 
+    // fail if the file was not locked by the requestor
     if (!errToSet && file->currentlyLockedBy.id == 0)
     {
         errToSet = E_FS_FILE_NOT_LOCKED;
     }
 
+    // if no error has occurred, attempt to remove the file from the file-system's list
     if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
     {
         struct File temp;
@@ -2248,14 +2295,16 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         file = List_searchExtract(fs->filesList, filePathComparator, &temp, &errToSet);
     }
 
+    // if no error has occurred, remove the file from the dict as well
     if (!errToSet)
     {
-        // remove the file from the dict as well
         icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
-        // update fs
+
+        // then update the file-system
         fs->currentNumOfFiles--;
         fs->currentStorageSize -= file->size;
 
+        // free the file
         free(file->data);
         free(file->path);
         List_free(&file->openedBy, 1, NULL);
@@ -2263,6 +2312,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         free(file);
     }
 
+    // release the file-system lock
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
@@ -2316,10 +2366,12 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     SET_ERROR;
 }
 
+// Free a ResultFile structure
 void ResultFile_free(ResultFile *rfPtr, int *error)
 {
     int errToSet = 0;
 
+    // arguments check
     IS_NULL_DO(rfPtr, errToSet = E_FS_RESULTFILE_IS_NULL);
 
     if (!errToSet)
@@ -2327,6 +2379,7 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
         IS_NULL_DO(*rfPtr, errToSet = E_FS_RESULTFILE_IS_NULL);
     }
 
+    // free what has to be freed
     if (!errToSet)
     {
         free((*rfPtr)->data);
@@ -2342,7 +2395,7 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
 size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error)
 {
     int errToSet = 0;
-    int hasFSMutex = 1;
+    int hasFSMutex = 1; // overall mutex
     int size = 0;
 
     if (fs == NULL)
@@ -2382,7 +2435,7 @@ size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error)
 size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error)
 {
     int errToSet = 0;
-    int hasFSMutex = 1;
+    int hasFSMutex = 1; // overall mutex
     int numOfFiles = 0;
 
     if (fs == NULL)
