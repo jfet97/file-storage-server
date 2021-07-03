@@ -270,20 +270,24 @@ int realloca(char **buf, size_t newsize)
     return toRet;
 }
 
+// Callback used to read at most N files from the file-system
+//
+// Notes:
+// - the caller must have acquired the file-system mutex
+// - skip those locked files that were locked by other clients
 void readNFiles(void *rawCtx, void *rawFile, int *error)
 {
-    // assumption: it has overall mutex
-
     struct ReadNFileSetResultFilesContext *ctx = rawCtx;
     ResultFile resultFile = NULL;
     File file = rawFile;
 
     int hasMutex = 0;
     int hasOrdering = 0;
-    // skip locked files
+
     int isLockedByOthers = 0;
     int activeReadersUpdated = 0;
 
+    // check arguments and decrease the counter
     if (ctx->counter <= 0 || *error)
     {
         return;
@@ -293,6 +297,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         ctx->counter--;
     }
 
+    // acquire the file's locks
     if (!(*error))
     {
         hasOrdering = 1;
@@ -323,12 +328,14 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         }
     }
 
+    // this function acts as a writer
     if (!(*error))
     {
         file->activeReaders++;
         activeReadersUpdated = 1;
     }
 
+    // release file's locks
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -349,8 +356,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
                     })
     }
 
-    // read
-
+    // if the file was locked by someone else, restore the counter and do nothing else
     if (!(*error))
     {
         isLockedByOthers = file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ctx->ownerId.id;
@@ -360,12 +366,14 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         }
     }
 
+    // otherwise create a resultFile structure
     if (!(*error) && !isLockedByOthers)
     {
         resultFile = malloc(sizeof(*resultFile));
         IS_NULL_DO(resultFile, { *error = E_FS_MALLOC; })
     }
 
+    // insert into the resultFile structure the file's data
     if (!(*error) && !isLockedByOthers)
     {
         resultFile->size = file->size;
@@ -386,9 +394,17 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         List_insertHead(ctx->resultFiles, resultFile, error);
     }
 
+    // in case of error, destroy the resultFile that may be incosistent
+    if (*error && resultFile)
+    {
+        resultFile->data ? free(resultFile->data) : (void)NULL;
+        resultFile->path ? free(resultFile->path) : (void)NULL;
+        free(resultFile);
+    }
+
+    // acquire the mutex lock
     if (!(*error))
     {
-
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
                     {
@@ -414,6 +430,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         }
     }
 
+    // release the file mutex
     if (hasMutex)
     {
         hasMutex = 0;
@@ -423,13 +440,6 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
                         *error = E_FS_MUTEX;
                         hasMutex = 1;
                     })
-    }
-
-    if (*error)
-    {
-        resultFile->data ? free(resultFile->data) : (void)NULL;
-        resultFile->path ? free(resultFile->path) : (void)NULL;
-        free(resultFile);
     }
 }
 
@@ -679,9 +689,9 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     }
 
     // always free all the file's data
-    file && hasExtracedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
-    file && hasExtracedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
-    file && hasExtracedFile ? free(file) : (void)NULL;
+    file &&hasExtracedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
+    file &&hasExtracedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
+    file &&hasExtracedFile ? free(file) : (void)NULL;
 
     if (errToSet && hasMutex)
     {
@@ -1286,20 +1296,23 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     return resultFile;
 }
 
+// Read at most N files
 List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
 {
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // file-system mutex
 
     int counter = 0;
     int filesListLen = 0;
     List_T resultFiles = NULL;
 
+    // check arguments
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
     }
 
+    // acquire overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -1310,21 +1323,26 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
                     })
     }
 
+    // set the variable containing how many files are in the list
     if (!errToSet)
     {
         filesListLen = List_length(fs->filesList, &errToSet);
     }
 
+    // how many files have to be read
     if (!errToSet)
     {
+        // the filesListLen is an upperbound
         counter = (N >= filesListLen || N <= 0) ? filesListLen : N;
     }
 
+    // create the list where to put the results
     if (!errToSet)
     {
         resultFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
     }
 
+    // read counter files
     if (!errToSet)
     {
         struct ReadNFileSetResultFilesContext ctx;
@@ -1332,8 +1350,13 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
         ctx.counter = counter;
         ctx.ownerId = ownerId;
         List_forEachWithContext(fs->filesList, readNFiles, &ctx, &errToSet);
+        if (errToSet)
+        {
+            errToSet = E_FS_GENERAL;
+        }
     }
 
+    // if the LRU policy was chosen, put each read file on top of the list
     if (!errToSet && fs->replacementPolicy == FS_REPLACEMENT_LRU)
     {
         struct ReadNFileLRUContext ctx;
@@ -1341,12 +1364,14 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
         List_forEachWithContext(resultFiles, moveFilesLRU, &ctx, &errToSet);
     }
 
+    // in case of errors, destroy the resultFiles list that may be inconsistent
     if (errToSet)
     {
-        resultFiles ? List_free(&resultFiles, 0, NULL) : (void)NULL;
+        resultFiles ? List_free(&resultFiles, 1, NULL) : (void)NULL;
         resultFiles = NULL;
     }
 
+    // release the overall mutex
     if (hasFSMutex)
     {
         hasFSMutex = 0;

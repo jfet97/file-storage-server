@@ -204,6 +204,7 @@ int main(void)
     PRINT_FS_STATS(fs, error);
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
+    
     puts("TEST REMOVE");
     SHOULD_FAIL(
         FileSystem_removeFile(fs, PATH_FILE_2, client_2, &error);)
@@ -213,8 +214,30 @@ int main(void)
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
 
-    FileSystem_delete(&fs, &error);
+    SHOULD_FAIL(FileSystem_openFile(fs, PATH_FILE_1, O_LOCK, client_1, &error);)
+    SHOULD_FAIL(FileSystem_openFile(fs, PATH_FILE_1, 0, client_1, &error);)
+    FileSystem_openFile(fs, PATH_FILE_1, O_CREATE , client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE , client_1, &error);
+    FileSystem_openFile(fs, PATH_FILE_3, O_CREATE , client_1, &error);
+    SHOULD_FAIL(IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1), client_1, 1, &error), rfs, &error);)
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1) + 1, client_1, 0, &error), rfs, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, strlen(CONTENT_FILE_2) + 1, client_1, 0, &error), rfs, &error);
+    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, strlen(CONTENT_FILE_3) + 1, client_1, 0, &error), rfs, &error);
+    PRINT_FS_STATS(fs, error);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+   
+    puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    PRINT_APPEND_RES(FileSystem_readNFile(fs, client_1, 1, &error), rfs, &error);
+    puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    PRINT_APPEND_RES(FileSystem_readNFile(fs, client_1, 3, &error), rfs, &error);
+    puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    PRINT_APPEND_RES(FileSystem_readNFile(fs, client_1, 5, &error), rfs, &error);
+    puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
+    FileSystem_delete(&fs, &error);
     printf("Error: %d\n", error);
 
     puts("well done!");
