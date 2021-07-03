@@ -32,6 +32,9 @@
         todoelse;                             \
     }
 
+#define TO_GENERAL_ERROR(E) \
+    E ? E = E_FS_GENERAL : 0;
+
 struct File
 {
     // also used as key for the FileSystem's files dict
@@ -518,6 +521,7 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
     if (!errToSet)
     {
         fs->filesList = List_create(NULL, NULL, fileDeallocator, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // create the internal dictionary of files, it enables a faster search
@@ -602,9 +606,10 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     File temp = NULL;
     ResultFile evictedFile = NULL;
     size_t listLength = List_length(fs->filesList, &errToSet);
+    TO_GENERAL_ERROR(errToSet);
     int hasMutex = 0;
     int hasOrdering = 0;
-    int hasExtracedFile = 0;
+    int hasExtractedFile = 0;
 
     // try to pick a file from the end of the list
     if (!errToSet)
@@ -627,18 +632,24 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         // temp: the file to not be evicted; it was previously picked
         // will be inserted back
         temp = List_extractTail(fs->filesList, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
 
         if (!errToSet)
         {
             // file: the file to evict
             file = List_extractTail(fs->filesList, &errToSet);
-            hasExtracedFile = 1;
+            TO_GENERAL_ERROR(errToSet);
+            if (!errToSet)
+            {
+                hasExtractedFile = 1;
+            }
         }
 
         if (!errToSet)
         {
             // reinsert temp
             List_insertTail(fs->filesList, temp, &errToSet);
+            TO_GENERAL_ERROR(errToSet);
         }
 
         if (errToSet)
@@ -656,7 +667,11 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
         {
             file = List_extractTail(fs->filesList, &errToSet);
-            hasExtracedFile = 1;
+            TO_GENERAL_ERROR(errToSet);
+            if (!errToSet)
+            {
+                hasExtractedFile = 1;
+            }
         }
     }
 
@@ -718,9 +733,12 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     }
 
     // always free all the file's data
-    file &&hasExtracedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
-    file &&hasExtracedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
-    file &&hasExtracedFile ? free(file) : (void)NULL;
+    file && hasExtractedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
+    file && hasExtractedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
+    file && hasExtractedFile ? free(file) : (void)NULL;
+    temp ? List_free(&temp->openedBy, 1, NULL) : (void)NULL;
+    temp ? List_free(&temp->waitingLockers, 1, NULL) : (void)NULL;
+    temp ? free(temp) : (void)NULL;
 
     if (errToSet && hasMutex)
     {
@@ -803,6 +821,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         struct File temp;
         temp.path = file->path;
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        TO_GENERAL_ERROR(errToSet);
 
         if (errToSet)
         {
@@ -841,7 +860,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             file->currentlyLockedBy.id = 0;
             // there is nothing that should be manually freed
             file->openedBy = List_create(ownerIdComparator, NULL, NULL, &errToSet);
-            IS_NULL_DO(file->openedBy, { errToSet = E_FS_MALLOC; })
+            TO_GENERAL_ERROR(errToSet);
         }
 
         if (!errToSet)
@@ -855,7 +874,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             strcpy(file->path, path);
             // there is nothing that should be manually freed
             file->waitingLockers = List_create(ownerIdComparator, NULL, NULL, &errToSet);
-            IS_NULL_DO(file->waitingLockers, { errToSet = E_FS_MALLOC; })
+            TO_GENERAL_ERROR(errToSet);
         }
 
         if (!errToSet)
@@ -883,6 +902,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (!errToSet)
         {
             List_insertHead(fs->filesList, file, &errToSet);
+            TO_GENERAL_ERROR(errToSet);
             insertedIntoList = errToSet ? 0 : 1;
         }
 
@@ -1027,6 +1047,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             {
                 oid->id = ownerId.id;
                 List_insertHead(file->openedBy, oid, &errToSet);
+                TO_GENERAL_ERROR(errToSet);
             }
 
             if (!errToSet)
@@ -1150,6 +1171,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
         struct File temp;
         temp.path = file->path;
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // acquire the file's mutexes
@@ -1235,7 +1257,8 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         int alreadyOpened = List_search(file->openedBy, List_getComparator(file->openedBy, NULL), &ownerId, &errToSet);
-        if (!alreadyOpened)
+        TO_GENERAL_ERROR(errToSet);
+        if (!errToSet && !alreadyOpened)
         {
             errToSet = E_FS_FILE_NOT_OPENED;
         }
@@ -1356,6 +1379,7 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
     if (!errToSet)
     {
         filesListLen = List_length(fs->filesList, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // how many files have to be read
@@ -1369,6 +1393,7 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
     if (!errToSet)
     {
         resultFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // read counter files
@@ -1379,10 +1404,7 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
         ctx.counter = counter;
         ctx.ownerId = ownerId;
         List_forEachWithContext(fs->filesList, readNFiles, &ctx, &errToSet);
-        if (errToSet)
-        {
-            errToSet = E_FS_GENERAL;
-        }
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // if the LRU policy was chosen, put each read file on top of the list
@@ -1391,6 +1413,7 @@ List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error)
         struct ReadNFileLRUContext ctx;
         ctx.files = fs->filesList;
         List_forEachWithContext(resultFiles, moveFilesLRU, &ctx, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // in case of errors, destroy the resultFiles list that may be inconsistent
@@ -1448,6 +1471,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     if (!errToSet)
     {
         evictedFiles = List_create(NULL, NULL, fileResultDeallocator, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // acquire the file-system mutex
@@ -1578,6 +1602,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             if (!errToSet)
             {
                 List_insertHead(evictedFiles, evicted, &errToSet);
+                TO_GENERAL_ERROR(errToSet);
             }
         }
 
@@ -1606,6 +1631,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             struct File temp;
             temp.path = file->path;
             List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+            TO_GENERAL_ERROR(errToSet);
         }
 
         // release the overall lock
@@ -1741,6 +1767,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
         struct File temp;
         temp.path = file->path;
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // unlock the overall mutex
@@ -1807,10 +1834,12 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
             {
                 oid->id = ownerId.id;
                 int present = List_search(file->waitingLockers, ownerIdComparator, oid, &errToSet);
+                TO_GENERAL_ERROR(errToSet);
 
                 if (!errToSet && !present)
                 {
                     List_insertTail(file->waitingLockers, oid, &errToSet);
+                    TO_GENERAL_ERROR(errToSet);
                 }
 
                 if (!errToSet && present)
@@ -1964,6 +1993,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         struct File temp;
         temp.path = file->path;
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // release the overall mutex
@@ -2037,6 +2067,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
         if (!errToSet && file->currentlyLockedBy.id == ownerId.id)
         {
             int listLength = List_length(file->waitingLockers, &errToSet);
+            TO_GENERAL_ERROR(errToSet);
             int lockedOwnerToSet = 0;
 
             // if someone else was waiting to set the lock on the file...
@@ -2044,6 +2075,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
             {
                 // ...extract it from the waiting list
                 oidToRet = List_extractHead(file->waitingLockers, &errToSet);
+                TO_GENERAL_ERROR(errToSet);
                 if (!errToSet)
                 {
                     lockedOwnerToSet = oidToRet->id;
@@ -2175,6 +2207,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         struct File temp;
         temp.path = file->path;
         List_insertHead(fs->filesList, List_searchExtract(fs->filesList, filePathComparator, &temp, NULL), &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // release the overall mutex
@@ -2241,6 +2274,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
         if (!errToSet)
         {
             OwnerId *ext = List_searchExtract(file->openedBy, ownerIdComparator, &_ownerId, &errToSet);
+            TO_GENERAL_ERROR(errToSet);
             if (!errToSet)
             {
                 //the "has opened the file?" control was passed, so 'ext' won't be NULL
@@ -2403,6 +2437,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         struct File temp;
         temp.path = path;
         file = List_searchExtract(fs->filesList, filePathComparator, &temp, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // if no error has occurred, remove the file from the dict as well
@@ -2472,6 +2507,7 @@ List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
         ctx.oid.id = ownerId.id;
         // a list of OwnerIds does not need a custom Deallocator function
         oidsHaveLocks = List_create(NULL, NULL, NULL, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
         ctx.oidsHaveLocks = oidsHaveLocks;
     }
 
@@ -2479,13 +2515,14 @@ List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     {
         // evict the client from every-where in the file-system
         List_forEachWithContext(fs->filesList, evictClientInternal, &ctx, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // if a list error has occurred, map it into a file-system error and destroy the oidsHaveLocks list that may be inconsistent
     if (errToSet)
     {
         List_free(&oidsHaveLocks, 1, &errToSet);
-        errToSet = E_FS_GENERAL;
+        TO_GENERAL_ERROR(errToSet);
     }
 
     // release the file-system mutex
@@ -2649,11 +2686,11 @@ Paths ResultFile_getStoredFilesPaths(FileSystem fs, int *error)
     if (!errToSet)
     {
         List_forEachWithContext(fs->filesList, extractPaths, ps, &errToSet);
+        TO_GENERAL_ERROR(errToSet)
     }
 
     if (errToSet)
     {
-        errToSet = E_FS_GENERAL;
         ps ? free(ps->paths) : (void)NULL;
         free(ps);
         ps = NULL;

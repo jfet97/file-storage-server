@@ -119,7 +119,6 @@ void print(int *error)
 }
 
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
-// TODO: check degli errori dell'uso delle liste
 // TODO: aggiungi statistiche nel file-system e aggiorna al tempo opportuno
 // TODO: hai fatto le signal?
 
@@ -265,6 +264,7 @@ int main(void)
     puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
     PRINT_FS_STATS(fs, error);
     FileSystem_printAll_DEBUG(fs);
+    PRINT_FS_STATS(fs, error);
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -280,8 +280,8 @@ int main(void)
     FileSystem_lockFile(fs, PATH_FILE_3, client_3, &error);
     FileSystem_printAll_DEBUG(fs);
     PRINT_QUEUE_OF_OWNIDS(FileSystem_evictClient(fs, client_1, &error);, &error)
-
     FileSystem_printAll_DEBUG(fs);
+    PRINT_FS_STATS(fs, error);
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
 
