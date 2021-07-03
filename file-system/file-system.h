@@ -38,16 +38,15 @@ typedef struct
     char *path;
     char *data;
     size_t size;
-} *ResultFile;
+} * ResultFile;
 
 typedef struct
 {
     int index;
     char **paths;
-} *Paths;
+} * Paths;
 
 int ownerIdComparator(void *, void *);
-
 
 FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int replacementPolicy, int *error);
 void FileSystem_delete(FileSystem *fsPtr, int *error);
@@ -56,12 +55,16 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
 List_T FileSystem_readNFile(FileSystem fs, OwnerId ownerId, int N, int *error);
 List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t contentSize, OwnerId ownerId, int write, int *error);
 void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
-OwnerId* FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
+OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error);
 List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error);
-void ResultFile_free(ResultFile* rfPtr, int* error);
+void ResultFile_free(ResultFile *rfPtr, int *error);
 size_t ResultFile_getCurrentSizeInByte(FileSystem fs, int *error);
 size_t ResultFile_getCurrentNumOfFiles(FileSystem fs, int *error);
 Paths ResultFile_getStoredFilesPaths(FileSystem fs, int *error);
 const char *FileSystem_getErrorMessage(int errorCode);
+
+// ACHTUNG: only for debug purposes, it is not thread safe (meant to be used in a single threaded environment)
+// nor production ready (errors are discarded, no input checks)
+void FileSystem_printAll_DEBUG(FileSystem fs);

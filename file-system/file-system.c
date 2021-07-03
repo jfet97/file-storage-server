@@ -2436,7 +2436,9 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 
 // Remove the presence of a client (ownerId) from all the structures inside the file-system
 //
-// Note: never release the file-system mutex because we visit and may modify lot of files'structures
+// Notes:
+// - never release the file-system mutex because we visit and may modify lot of files'structures
+// - return a list of OwnerIds that have gained a logical file's lock
 List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
 {
 
@@ -2474,13 +2476,13 @@ List_T FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
     if (!errToSet)
     {
         // evict the client from every-where in the file-system
-        List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
+        List_forEachWithContext(fs->filesList, evictClientInternal, &ctx, &errToSet);
     }
 
     // if a list error has occurred, map it into a file-system error and destroy the oidsHaveLocks list that may be inconsistent
     if (errToSet)
     {
-        List_free(oidsHaveLocks, 1, &errToSet);
+        List_free(&oidsHaveLocks, 1, &errToSet);
         errToSet = E_FS_GENERAL;
     }
 
@@ -2693,4 +2695,53 @@ const char *filesystem_error_messages[] = {
 const char *FileSystem_getErrorMessage(int errorCode)
 {
     return filesystem_error_messages[errorCode - 11];
+}
+
+// ------------------------------------------------------------------------------------------------------------------
+// DEBUG FUNCTIONS
+
+// ACHTUNG: only for debug purposes, it is not thread safe (meant to be used in a single threaded environment)
+// nor production ready (errors are discarded, no input checks)
+void printOwnerIdInfo_DEBUG(void *rawOwnerId, int* _)
+{
+    OwnerId *oid = rawOwnerId;
+    puts("@@@@@@@@@@@@@@@@@@@");
+    printf("OwnerId is %d\n", oid->id);
+    puts("@@@@@@@@@@@@@@@@@@@");
+}
+
+// ACHTUNG: only for debug purposes, it is not thread safe (meant to be used in a single threaded environment)
+// nor production ready (errors are discarded, no input checks)
+void printFileInfo_DEBUG(void *rawFile, int *_)
+{
+    File file = rawFile;
+    puts("##############################");
+    printf("File Path is: %s\n", file->path);
+    printf("File Data is: %s\n", file->data);
+    printf("File Size is: %d\n", file->size);
+    printf("file->currentlyLockedBy is: %d\n", file->currentlyLockedBy.id);
+    printf("file->ownerCanWrite is: %d\n", file->ownerCanWrite.id);
+    puts("Openers Queue:");
+    List_forEach(file->openedBy, printOwnerIdInfo_DEBUG, NULL);
+    puts("\nLock Waiting Queue:");
+    List_forEach(file->waitingLockers, printOwnerIdInfo_DEBUG, NULL);
+    puts("##############################");
+}
+
+void FileSystem_printAll_DEBUG(FileSystem fs)
+{
+    puts("\n\n**************************************************");
+    puts("**************************************************");
+    puts("**************************************************");
+    puts("FileSystem DEBUG INFO");
+    printf("REPLACEMENT POLICY IS %d\n", fs->replacementPolicy);
+    printf("MAX NUM OF FILES IS %d\n", fs->maxNumOfFiles);
+    printf("MAX FILE-SYSTEM SIZE IN BYTE IS %d\n", fs->maxStorageSize);
+    printf("CURRENT NUM OF FILES IS %d\n", fs->currentNumOfFiles);
+    printf("CURRENT FILE-SYSTEM SIZE IN BYTE IS IS %d\n", fs->currentStorageSize);
+    puts("\nFILES INFO:\n");
+    List_forEach(fs->filesList, printFileInfo_DEBUG, NULL);
+    puts("**************************************************");
+    puts("**************************************************");
+    puts("**************************************************\n");
 }
