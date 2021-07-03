@@ -214,15 +214,17 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
         if (file->currentlyLockedBy.id == ctx->oid.id)
         {
             file->currentlyLockedBy.id == 0;
+            oidToGiveLock = List_extractHead(file->waitingLockers, error);
         }
-        // reset the write flag
-        if (file->ownerCanWrite.id == ctx->oid.id)
+
+        // eventually reset the write flag
+        if (!(*error) && file->ownerCanWrite.id == ctx->oid.id)
         {
+
             file->ownerCanWrite.id = 0;
         }
 
         // replace the locker if there were anyone else in the waiting list
-        oidToGiveLock = List_pickHead(file->waitingLockers, error);
         if (!(*error) && oidToGiveLock)
         {
             file->currentlyLockedBy.id = oidToGiveLock->id;
@@ -2702,7 +2704,7 @@ const char *FileSystem_getErrorMessage(int errorCode)
 
 // ACHTUNG: only for debug purposes, it is not thread safe (meant to be used in a single threaded environment)
 // nor production ready (errors are discarded, no input checks)
-void printOwnerIdInfo_DEBUG(void *rawOwnerId, int* _)
+void printOwnerIdInfo_DEBUG(void *rawOwnerId, int *_)
 {
     OwnerId *oid = rawOwnerId;
     puts("@@@@@@@@@@@@@@@@@@@");
