@@ -120,7 +120,6 @@ void print(int *error)
 
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
 // TODO: check degli errori dell'uso delle liste
-// TODO: occhio a dove imposti file->ownerCanWrite.id = 0;
 // TODO: aggiungi statistiche nel file-system e aggiorna al tempo opportuno
 // TODO: hai fatto le signal?
 

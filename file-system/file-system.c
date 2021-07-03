@@ -213,7 +213,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
         // unlock the file if it was locked by the ownerId to evict
         if (file->currentlyLockedBy.id == ctx->oid.id)
         {
-            file->currentlyLockedBy.id == 0;
+            file->currentlyLockedBy.id = 0;
             oidToGiveLock = List_extractHead(file->waitingLockers, error);
         }
 
