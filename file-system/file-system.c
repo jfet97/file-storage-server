@@ -563,6 +563,9 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     File temp = NULL;
     ResultFile evictedFile = NULL;
     size_t listLength = List_length(fs->filesList, &errToSet);
+    int hasMutex = 0;
+    int hasOrdering = 0;
+    int hasExtracedFile = 0;
 
     // try to pick a file from the end of the list
     if (!errToSet)
@@ -590,6 +593,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         {
             // file: the file to evict
             file = List_extractTail(fs->filesList, &errToSet);
+            hasExtracedFile = 1;
         }
 
         if (!errToSet)
@@ -613,6 +617,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
         {
             file = List_extractTail(fs->filesList, &errToSet);
+            hasExtracedFile = 1;
         }
     }
 
@@ -621,19 +626,23 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         // remove the file from the dict as well
         icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
 
+        hasOrdering = 1;
         // acquire the ordering lock of the evicted file
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
                     {
                         errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
                     })
     }
 
     if (!errToSet)
     {
+        hasMutex = 1;
         // acquire the mutex lock of the evicted file
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
                     {
                         errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
                     })
     }
 
@@ -667,11 +676,21 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         evictedFile->data = file->data;
         evictedFile->path = file->path;
         evictedFile->size = file->size;
+    }
 
-        // free all the file's data that aren't going to be used again
-        List_free(&file->openedBy, 1, NULL);
-        List_free(&file->waitingLockers, 1, NULL);
-        free(file);
+    // always free all the file's data
+    file && hasExtracedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
+    file && hasExtracedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
+    file && hasExtracedFile ? free(file) : (void)NULL;
+
+    if (errToSet && hasMutex)
+    {
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex), errToSet = E_FS_MUTEX;)
+    }
+
+    if (errToSet && hasOrdering)
+    {
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering), errToSet = E_FS_MUTEX;)
     }
 
     SET_ERROR;
@@ -1241,6 +1260,16 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
                     errToSet = E_FS_COND;
                 })
             };
+        }
+
+        if (hasMutex)
+        {
+            hasMutex = 0;
+            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                        {
+                            errToSet = E_FS_MUTEX;
+                            hasMutex = 1;
+                        })
         }
     }
 
@@ -2220,6 +2249,8 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
 {
     int errToSet = 0;
     int hasFSMutex = 1; // overall mutex
+    int hasMutex = 0;
+    int hasOrdering = 0;
 
     File file = NULL;
 
@@ -2254,17 +2285,21 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     // acquire the file's locks
     if (!errToSet)
     {
+        hasOrdering = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
                     {
                         errToSet = E_FS_MUTEX;
+                        hasOrdering = 0;
                     })
     }
 
     if (!errToSet)
     {
+        hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
                     {
                         errToSet = E_FS_MUTEX;
+                        hasMutex = 0;
                     })
     }
 
@@ -2275,8 +2310,29 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         })
     }
 
+    // release the file's mutexes
+    if (hasOrdering)
+    {
+        hasOrdering = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->ordering),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasOrdering = 1;
+                    })
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
+    }
+
     // fail if the file was locked by someone else
-    if (!errToSet && file->currentlyLockedBy.id != ownerId.id)
+    if (!errToSet && file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
     {
         errToSet = E_FS_FILE_IS_LOCKED;
     }

@@ -29,13 +29,17 @@
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
 
-void printFile(void * rawFile, int* _) {
+#define PRINT_RESULTING_FILE(F)       \
+    puts("------------------------"); \
+    puts("Resulting file:");          \
+    puts(F->path);                    \
+    puts(F->data);                    \
+    puts("------------------------");
+
+void printResultFile(void *rawFile, int *_)
+{
     ResultFile f = rawFile;
-    puts("------------------------");
-    puts("Resulting file:");
-    puts(f->path);
-    puts(f->data);
-    puts("------------------------");
+    PRINT_RESULTING_FILE(f)
 }
 
 #define PRINT_FS_STATS(FS, E)                                              \
@@ -65,16 +69,22 @@ void printFile(void * rawFile, int* _) {
         List_free(&R, 1, E);       \
     }
 
-#define PRINT_APPEND_RES(A, R, E) \
-    R = A;                         \
-    if (R)                         \
-    {                              \
-        List_forEach(R, printFile, E); \
-        List_free(&R, 1, E);       \
+#define PRINT_APPEND_RES(A, R, E)            \
+    R = A;                                   \
+    if (R)                                   \
+    {                                        \
+        List_forEach(R, printResultFile, E); \
+        List_free(&R, 1, E);                 \
     }
 
-    void
-    print(int *error)
+#define SHOULD_FAIL(C)        \
+    puts("next should fail"); \
+    {                         \
+        C                     \
+            print(&error);    \
+    };
+
+void print(int *error)
 {
     if (error && *error)
     {
@@ -83,7 +93,6 @@ void printFile(void * rawFile, int* _) {
     }
 }
 
-// TODO: test dei flag
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
 // TODO: commentare il file-system, check delle condizioni nei cicli, check degli errori della lista
 // TODO: occhio a dove imposti file->ownerCanWrite.id = 0; nelle due read, da spostare poi0
@@ -113,49 +122,50 @@ int main(void)
     List_T rfs = NULL;
     OwnerId *oid = NULL;
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
     FileSystem_openFile(fs, PATH_FILE_1, O_CREATE | O_LOCK, client_1, &error);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1), client_1, 1, &error), rfs, &error);
-
-    puts("next should fail");
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1) + 1, client_1, 1, &error), rfs, &error); // should fail
-    print(&error);
+    SHOULD_FAIL(
+        IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1) + 1, client_1, 1, &error), rfs, &error);)
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_1, CONTENT_FILE_1, strlen(CONTENT_FILE_1) + 1, client_1, 0, &error), rfs, &error);
-
     FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_2, &error);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, CONTENT_FILE_2, strlen(CONTENT_FILE_2), client_2, 1, &error), rfs, &error);
-
     FileSystem_openFile(fs, PATH_FILE_3, O_CREATE | O_LOCK, client_1, &error);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_3, CONTENT_FILE_3, strlen(CONTENT_FILE_3) + 1, client_1, 1, &error), rfs, &error);
-
     PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
 
     // FIFO: PATH_FILE_1 will be evicted
     rf = FileSystem_openFile(fs, PATH_FILE_4, O_CREATE | O_LOCK, client_2, &error);
-    puts(rf->path);
-    puts(rf->data);
+    PRINT_RESULTING_FILE(rf)
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, strlen(CONTENT_FILE_4) + 1, client_2, 1, &error), rfs, &error);
-    puts("next should fail");
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, strlen(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error); // should fail
-    print(&error);
+    SHOULD_FAIL(
+        IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_4, CONTENT_FILE_4, strlen(CONTENT_FILE_4) + 1, client_1, 1, &error), rfs, &error);)
     ResultFile_free(&rf, &error);
     PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
 
     // FIFO: PATH_FILE_4, PATH_FILE_3, will be evicted
     PRINT_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, LONG_CONTENT_FILE_2, strlen(LONG_CONTENT_FILE_2), client_2, 0, &error), rfs, &error);
     PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
 
     FileSystem_unlockFile(fs, PATH_FILE_2, client_2, &error);
     FileSystem_openFile(fs, PATH_FILE_2, 0, client_1, &error);
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, SMALL_TEXT, strlen(SMALL_TEXT), client_1, 0, &error), rfs, &error);
     PRINT_FS_STATS(fs, error);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
     FileSystem_lockFile(fs, PATH_FILE_2, client_1, &error);
-    puts("next should fail");
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, SMALL_TEXT, strlen(SMALL_TEXT) + 1, client_2, 0, &error), rfs, &error); // should fail
-    print(&error);
-    puts("next should fail");
-    FileSystem_lockFile(fs, PATH_FILE_2, client_1, &error); // should fail
-    print(&error);
+    SHOULD_FAIL(
+        IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, SMALL_TEXT, strlen(SMALL_TEXT) + 1, client_2, 0, &error), rfs, &error);)
+    SHOULD_FAIL(
+        FileSystem_lockFile(fs, PATH_FILE_2, client_1, &error);)
     FileSystem_lockFile(fs, PATH_FILE_2, client_2, &error); // should fail successfully
     print(&error);
     oid = FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
@@ -163,34 +173,45 @@ int main(void)
     free(oid);
     PRINT_FS_STATS(fs, error);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
     IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, SMALL_TEXT, strlen(SMALL_TEXT) + 1, client_2, 0, &error), rfs, &error);
     FileSystem_unlockFile(fs, PATH_FILE_2, client_2, &error);
     PRINT_FS_STATS(fs, error);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
     FileSystem_closeFile(fs, PATH_FILE_2, client_1, &error);
-    puts("next should fail");
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_1, 0, &error), rfs, &error); // should fail
-    print(&error);
-    puts("next should fail");
-    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_1, &error); // should fail
-    print(&error);
-    puts("next should fail");
-    FileSystem_openFile(fs, PATH_FILE_2, O_CREATE, client_1, &error); // should fail
-    print(&error);
+    SHOULD_FAIL(
+        IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_1, 0, &error), rfs, &error);)
+    SHOULD_FAIL(
+        FileSystem_openFile(fs, PATH_FILE_2, O_CREATE | O_LOCK, client_1, &error);)
+    SHOULD_FAIL(
+        FileSystem_openFile(fs, PATH_FILE_2, O_CREATE, client_1, &error);)
     FileSystem_openFile(fs, PATH_FILE_2, O_LOCK, client_1, &error);
-    puts("next should fail");
-    IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_2, 0, &error), rfs, &error); // should fail
-    print(&error);
+    SHOULD_FAIL(
+        IGNORE_APPEND_RES(FileSystem_appendToFile(fs, PATH_FILE_2, VOID_TEXT, strlen(VOID_TEXT) + 1, client_2, 0, &error), rfs, &error);)
     FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
     FileSystem_closeFile(fs, PATH_FILE_2, client_1, &error);
     print(&error);
     PRINT_FS_STATS(fs, error);
 
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
     rf = FileSystem_readFile(fs, PATH_FILE_2, client_2, &error);
-    puts(rf->path);
-    puts(rf->data);
+    PRINT_RESULTING_FILE(rf)
     ResultFile_free(&rf, &error);
     PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+    puts("TEST REMOVE");
+    SHOULD_FAIL(
+        FileSystem_removeFile(fs, PATH_FILE_2, client_2, &error);)
+    FileSystem_lockFile(fs, PATH_FILE_2, client_2, &error);
+    FileSystem_removeFile(fs, PATH_FILE_2, client_2, &error);
+    PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
 
     FileSystem_delete(&fs, &error);
 
