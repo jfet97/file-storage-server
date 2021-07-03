@@ -28,6 +28,9 @@
 #define VOID_TEXT ""                // 1
 #define CLIENT_ID_1 1001
 #define CLIENT_ID_2 1002
+#define CLIENT_ID_3 1003
+#define CLIENT_ID_4 1004
+#define CLIENT_ID_5 1005
 
 #define PRINT_RESULTING_FILE(F)       \
     puts("------------------------"); \
@@ -94,8 +97,10 @@ void print(int *error)
 }
 
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
-// TODO: commentare il file-system, check delle condizioni nei cicli, check degli errori della lista
-// TODO: occhio a dove imposti file->ownerCanWrite.id = 0; nelle due read, da spostare poi0
+// TODO: check degli errori dell'uso delle liste
+// TODO: occhio a dove imposti file->ownerCanWrite.id = 0;
+// TODO: aggiungi statistiche nel file-system e aggiorna al tempo opportuno
+// TODO: hai fatto le signal?
 
 // invarianti:
 // non posso aprire un file lockato da qualcun'altro
@@ -234,6 +239,7 @@ int main(void)
     puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
     PRINT_APPEND_RES(FileSystem_readNFile(fs, client_1, 5, &error), rfs, &error);
     puts("@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+    PRINT_FS_STATS(fs, error);
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
 

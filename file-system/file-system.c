@@ -131,12 +131,11 @@ void extractPaths(void *rawPaths, void *rawFile, int *error)
     }
 }
 
-// Callback used to ???
+// Callback used to evict a client from the structures of a file
 //
 // Note: the caller must own the file-system lock
 void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
 {
-    // precondition: has overall mutex
 
     OwnerId *oid = rawOwnerId;
     OwnerId *oidToFree = NULL;
@@ -144,6 +143,7 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
     int hasMutex = 0;
     int hasOrdering = 0;
 
+    // acquire the file's mutexes
     if (!(*error))
     {
         hasOrdering = 1;
@@ -174,11 +174,13 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
         }
     }
 
+    // this function acts as a writer
     if (!(*error))
     {
         file->activeWriters++;
     }
 
+    // unlock the file's mutexes
     if (hasOrdering)
     {
         hasOrdering = 0;
@@ -199,33 +201,40 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
                     })
     }
 
+    // if no error has occurred
     if (!(*error))
     {
+        // unlock the file if it was locked by the ownerId to evict
         if (file->currentlyLockedBy.id == oid->id)
         {
             file->currentlyLockedBy.id == 0;
         }
+        // reset the write flag
         if (file->ownerCanWrite.id == oid->id)
         {
-            // this functions invalidates the ability to write on the file
             file->ownerCanWrite.id = 0;
         }
 
+        // search the ownerId inside the openedBy list and extract it...
         oidToFree = List_searchExtract(file->openedBy, ownerIdComparator, &oid, error);
     }
 
     if (!(*error))
-    {
+    {   
+        // ...free it if it was found...
         (oidToFree ? free(oidToFree) : (void)NULL);
         oidToFree = NULL;
+        // ...then search it inside the waitingLockers list...
         oidToFree = List_searchExtract(file->waitingLockers, ownerIdComparator, &oid, error);
     }
 
     if (!(*error))
     {
+        // ...free it if it was found
         (oidToFree ? free(oidToFree) : (void)NULL);
     }
 
+    // acquire the file mutex
     if (!(*error))
     {
         hasMutex = 1;
@@ -236,11 +245,13 @@ void evictClientInternal(void *rawOwnerId, void *rawFile, int *error)
                     })
     }
 
+    // work is done
     if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
     {
         file->activeWriters--;
     }
 
+    // release the file's lock
     if (hasMutex)
     {
         hasMutex = 0;
@@ -415,8 +426,6 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
 
     if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
     {
-        // this functions invalidates the ability to write on the file
-        file->ownerCanWrite.id = 0;
         if (activeReadersUpdated)
         {
             file->activeReaders--;
@@ -2407,21 +2416,22 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     SET_ERROR;
 }
 
+// Remove the presence of a client (ownerId) from all the structures inside the file-system
+//
+// Note: never release the file-system mutex because we visit and may modify lot of files'structures
 void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
 {
 
-    // tengo la lock globale per evitare modifiche indesiderate alle strutture
-    // del file system che potrebbero portare a saltare file e/o peggiori errori
-    // nell'iterazione
-
     int errToSet = 0;
-    int hasFSMutex = 0;
+    int hasFSMutex = 0; // file-system (overall) mutex
 
+    // argument check
     if (fs == NULL)
     {
         errToSet = E_FS_NULL_FS;
     }
 
+    // acquire the overall mutex
     if (!errToSet)
     {
         hasFSMutex = 1;
@@ -2432,8 +2442,15 @@ void FileSystem_evictClient(FileSystem fs, OwnerId ownerId, int *error)
                     })
     }
 
+    // evict the client from every-where in the file-system
     List_forEachWithContext(fs->filesList, evictClientInternal, &ownerId, &errToSet);
 
+    if (errToSet)
+    {
+        errToSet = E_FS_GENERAL;
+    }
+
+    // release the file-system mutex
     if (hasFSMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
     {
         hasFSMutex = 0;
