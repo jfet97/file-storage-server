@@ -17,12 +17,12 @@ dist: clean all
 
 all: $(TARGET)
 
-../libfile-system.a:
-	cd ../ && $(MAKE) all
+../../libfile-system.a:
+	cd ../../ && $(MAKE) all
 
-bin/main: ./main.c ../libfile-system.a ../file-system.h
+bin/main: ./main.c ../../libfile-system.a ../../file-system.h
 	(mkdir bin || true)
-	$(CC) $(CFLAGS) $^ -I ../ -I ../../hashmap/ -I ../../list/ -L ../ -lfile-system -L../../hashmap/ -licl_hash -L../../list/ -llist -o $@
+	$(CC) $(CFLAGS) $^ -I ../../ -I ../../../hashmap/ -I ../../../list/ -L ../../ -lfile-system -L../../../hashmap/ -licl_hash -L../../../list/ -llist -o $@
 
 clean: 
 	-rm -rf $(BUILDDIR)

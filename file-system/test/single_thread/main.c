@@ -119,7 +119,6 @@ void print(int *error)
     }
 }
 
-// TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
 // TODO: hai fatto le signal?
 
 // invarianti:
