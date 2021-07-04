@@ -704,8 +704,6 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
-        // remove the file from the dict as well
-        icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
 
         hasOrdering = 1;
         // acquire the ordering lock of the evicted file
@@ -740,6 +738,9 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     if (!errToSet)
     {
+        // remove the file from the dict as well
+        icl_hash_delete(fs->filesDict, file->path, NULL, NULL);
+
         // create a ResultFile structure to be returned
         evictedFile = malloc(sizeof(*evictedFile));
         IS_NULL_DO(evictedFile, {
@@ -1103,7 +1104,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         }
 
         // get the file's mutex lock
-        if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+        if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
         {
             hasMutex = 1;
             NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -1678,7 +1679,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
     }
 
     // acquire again the file's mutex
-    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -1908,7 +1909,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
     }
 
     // acquire the file's mutex lock
-    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -2123,7 +2124,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     }
 
     // acquire the mutex lock of the file
-    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -2315,7 +2316,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     }
 
     // acquire again the file's mutex
-    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),

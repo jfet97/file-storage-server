@@ -3,7 +3,7 @@
 # make dist -> compile with compiler optimizations
 # make clean -> remove the binaries
 
-CFLAGS += -std=c99 -Wall -pedantic -pthread
+CFLAGS += -std=c99 -Wall -pedantic -pthread -fno-stack-protector
 TARGET = bin/main
 BUILDDIR = bin
 
