@@ -14,13 +14,21 @@
 #include <sys/types.h>
 
 #define N_OF_CLIENTS 150
-#define USED_POLICY FS_REPLACEMENT_FIFO
-// #define USED_POLICY FS_REPLACEMENT_LRU
+// #define USED_POLICY FS_REPLACEMENT_FIFO
+#define USED_POLICY FS_REPLACEMENT_LRU
 #define MAX_STORAGE_SIZE 15000
 #define MAX_NUM_OF_FILES 100
 #define PATH_LENGHT 50
 #define TEXT_LENGHT 1000
-#define CYCLES 300
+#define CYCLES 200
+
+#define DEBUG
+
+#ifdef DEBUG
+#define D(x) x
+#else
+#define D(x)
+#endif
 
 #define ec(s, r, m)     \
   if ((s) == (r))       \
@@ -36,11 +44,11 @@
     exit(EXIT_FAILURE); \
   }
 
-#define PRINT_RESULTING_FILE(F)     \
-  puts("------------------------"); \
-  puts("Resulting file:");          \
-  puts(F->path);                    \
-  puts(F->data);                    \
+#define PRINT_RESULTING_FILE(F)            \
+  puts("------------------------");        \
+  puts("Resulting file:");                 \
+  puts(F->path);                           \
+  printf("%.*s\n", (int)F->size, F->data); \
   puts("------------------------");
 
 #define IF_EXISTS_PRINT_FREE_RES_FILE(F) \
@@ -54,12 +62,12 @@
   if (*E)              \
     printError(E);
 
-#define PRINT_QUEUE_OF_RES_FILE(A, R, E) \
-  R = A;                                 \
-  if (R)                                 \
-  {                                      \
-    List_forEach(R, printResultFile, E); \
-    List_free(&R, 1, E);                 \
+#define PRINT_QUEUE_OF_RES_FILE(A, R, E)    \
+  R = A;                                    \
+  if (R)                                    \
+  {                                         \
+    D(List_forEach(R, printResultFile, E);) \
+    List_free(&R, 1, E);                    \
   }
 
 #define IGNORE_QUEUE_OF_RES_FILE(A, R, E) \
@@ -87,18 +95,24 @@ void printResultFile(void *rawFile, int *_)
   PRINT_RESULTING_FILE(f)
 }
 
-static char *rand_string(char *str, size_t size)
+static char *rand_string(char *str, size_t size, int term)
 {
-  static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK...";
+  static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK.";
   if (size)
   {
-    --size; // to place the null terminator
+    if (term)
+    {
+      --size; // to place the null terminator
+    }
     for (size_t n = 0; n < size; n++)
     {
       int key = rand() % (int)(sizeof charset - 1);
       str[n] = charset[key];
     }
-    str[size] = '\0';
+    if (term)
+    {
+      str[size] = '\0';
+    }
   }
   return str;
 }
@@ -135,18 +149,18 @@ void *worker(void *arg)
       rf = FileSystem_openFile(ctx->fs, ctx->files[file].path, 0, id, &error);
       if (error)
       {
-        // PRINT_ERROR(&error);
+        D(PRINT_ERROR(&error));
       }
       else
       {
-        // IF_EXISTS_PRINT_FREE_RES_FILE(rf);
+        D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
         char text[TEXT_LENGHT];
-        rand_string(text, TEXT_LENGHT);
+        rand_string(text, TEXT_LENGHT, 1);
 
-        IGNORE_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
-        // PRINT_ERROR(&error);
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        D(PRINT_ERROR(&error);)
         FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
-        // PRINT_ERROR(&error);
+        D(PRINT_ERROR(&error);)
       }
       break;
     }
@@ -155,30 +169,27 @@ void *worker(void *arg)
       rf = FileSystem_openFile(ctx->fs, ctx->files[file].path, O_CREATE, id, &error);
       if (error)
       {
-        // PRINT_ERROR(&error);
+        D(PRINT_ERROR(&error);)
       }
       else
       {
-        // IF_EXISTS_PRINT_FREE_RES_FILE(rf);
+        D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
         char text[TEXT_LENGHT];
-        rand_string(text, TEXT_LENGHT);
+        rand_string(text, TEXT_LENGHT, 1);
 
-        IGNORE_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
-        // PRINT_ERROR(&error);
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        D(PRINT_ERROR(&error);)
         FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
-        // PRINT_ERROR(&error);
+        D(PRINT_ERROR(&error);)
       }
       break;
     }
-
-    // case 1: //readN
-    //   readNfiles(10, &list, c);
-    //   if (list)
-    //   {
-    //     queueDestroy(list);
-    //     list = NULL;
-    //   }
-    //   break;
+    case 2:
+    {
+      PRINT_QUEUE_OF_RES_FILE(FileSystem_readNFile(ctx->fs, id, MAX_NUM_OF_FILES / 7, &error), rfs, &error)
+      D(PRINT_ERROR(&error);)
+      break;
+    }
     // case 2: //lock
     //   LoggerLog("BEGIN-rt2", strlen("BEGIN-rt2"));
     //   lockFile(f, c);
@@ -243,7 +254,7 @@ int main(void)
   FileMT files[MAX_NUM_OF_FILES];
   for (int i = 0; i < MAX_NUM_OF_FILES; i++)
   {
-    rand_string(files[i].path, PATH_LENGHT);
+    rand_string(files[i].path, PATH_LENGHT, 1);
   }
 
   // INIT CONTEXTS
