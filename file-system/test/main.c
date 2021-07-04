@@ -13,6 +13,7 @@
 #include <sys/types.h>
 
 #define USED_POLICY FS_REPLACEMENT_FIFO
+// #define USED_POLICY FS_REPLACEMENT_LRU
 #define MAX_STORAGE_SIZE 130
 #define MAX_NUM_OF_FILES 3
 #define PATH_FILE_1 "/folder1/file1.txt"
@@ -42,7 +43,7 @@
 #define PRINT_OWNER_ID(O)             \
     puts("------------------------"); \
     puts("Owner Id:");                \
-    printf("%d\n", O->id);                       \
+    printf("%d\n", O->id);            \
     puts("------------------------");
 
 void printResultFile(void *rawFile, int *_)
@@ -119,7 +120,6 @@ void print(int *error)
 }
 
 // TODO: test delle politiche di replacement sia quando non c'è più spazio, sia quando si ha raggiunto il massimo numero di file
-// TODO: aggiungi statistiche nel file-system e aggiorna al tempo opportuno
 // TODO: hai fatto le signal?
 
 // invarianti:
@@ -281,6 +281,29 @@ int main(void)
     FileSystem_printAll_DEBUG(fs);
     PRINT_QUEUE_OF_OWNIDS(FileSystem_evictClient(fs, client_1, &error);, &error)
     FileSystem_printAll_DEBUG(fs);
+    PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
+    FileSystem_unlockFile(fs, PATH_FILE_1, client_4, &error);
+    FileSystem_unlockFile(fs, PATH_FILE_1, client_5, &error);
+    FileSystem_unlockFile(fs, PATH_FILE_2, client_2, &error);
+    FileSystem_unlockFile(fs, PATH_FILE_2, client_3, &error);
+    FileSystem_unlockFile(fs, PATH_FILE_3, client_3, &error);
+    FileSystem_printAll_DEBUG(fs);
+    PRINT_FS_STATS(fs, error);
+
+    // ---------------------------------------------------------------------------------------------------------------------------------------------
+
+    rf = FileSystem_readFile(fs, PATH_FILE_2, client_2, &error);
+    ResultFile_free(&rf, &error);
+    rf = FileSystem_readFile(fs, PATH_FILE_1, client_2, &error);
+    ResultFile_free(&rf, &error);
+    rf = FileSystem_readFile(fs, PATH_FILE_3, client_2, &error);
+    ResultFile_free(&rf, &error);
+    rf = FileSystem_openFile(fs, PATH_FILE_4, O_CREATE, client_2, &error);
+    PRINT_RESULTING_FILE(rf);
+    ResultFile_free(&rf, &error);
     PRINT_FS_STATS(fs, error);
 
     // ---------------------------------------------------------------------------------------------------------------------------------------------
