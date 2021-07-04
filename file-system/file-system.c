@@ -68,6 +68,10 @@ struct FileSystem
     icl_hash_t *filesDict;
 
     pthread_mutex_t overallMutex;
+
+    size_t maxNumOfFilesReached;
+    size_t maxByteOfStorageUsed;
+    size_t numOfReplacementAlgoRuns;
 };
 
 struct ReadNFileSetResultFilesContext
@@ -87,6 +91,18 @@ struct EvictClientContext
     OwnerId oid;
     List_T oidsHaveLocks;
 };
+
+// Callback used to print a file data, use only in the FileSystem_delete function
+// or in a single threaded environment
+void printFile(void *rawFile, int *_)
+{
+    File file = rawFile;
+    puts("--------------------------");
+    printf("File Path is: %s\n", file->path);
+    printf("File Data is: %s\n", file->data);
+    printf("File Size is: %d\n", file->size);
+    puts("--------------------------");
+}
 
 // Callback used to free a list of files
 void fileDeallocator(void *rawFile)
@@ -542,6 +558,9 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
         fs->maxNumOfFiles = maxNumOfFiles;
         fs->maxStorageSize = maxStorageSize;
         fs->replacementPolicy = replacementPolicy;
+        fs->maxNumOfFilesReached = 0;
+        fs->maxByteOfStorageUsed = 0;
+        fs->numOfReplacementAlgoRuns = 0;
         fs->currentStorageSize = 0;
         fs->currentNumOfFiles = 0;
 
@@ -563,7 +582,7 @@ FileSystem FileSystem_create(size_t maxStorageSize, size_t maxNumOfFiles, int re
 }
 
 // Destroy a file-system
-// Note: this function must be called only when all but one threads have died => no mutex is required
+// Note: this function must be called only when all but the main one threads have died => no mutex is required
 void FileSystem_delete(FileSystem *fsPtr, int *error)
 {
 
@@ -576,10 +595,18 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
         errToSet = E_FS_NULL_FS;
     }
 
-    // free what has to be freed
+    // print stats, then free what has to be freed
     if (!errToSet)
     {
         fs = *fsPtr;
+
+        puts("\nFILE SYSTEM FINAL STATS");
+        printf("Max number of file stored was: %d\n", fs->maxNumOfFilesReached);
+        printf("Max Mbytes of space used was: %d\n", fs->maxByteOfStorageUsed / 1024);
+        printf("Number of times the replacing algoritm has run was: %d\n", fs->numOfReplacementAlgoRuns);
+        puts("Follows a list of file still present in the file-system");
+        List_forEach(fs->filesList, printFile, NULL);
+        puts("END...HAVE A NICE DAY!");
 
         // the filesDict is not responsible of freeing the File entries nor the string keys
         icl_hash_destroy(fs->filesDict, NULL, NULL);
@@ -730,12 +757,14 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         evictedFile->data = file->data;
         evictedFile->path = file->path;
         evictedFile->size = file->size;
+
+        fs->numOfReplacementAlgoRuns++;
     }
 
     // always free all the file's data
-    file && hasExtractedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
-    file && hasExtractedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
-    file && hasExtractedFile ? free(file) : (void)NULL;
+    file &&hasExtractedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
+    file &&hasExtractedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
+    file &&hasExtractedFile ? free(file) : (void)NULL;
     temp ? List_free(&temp->openedBy, 1, NULL) : (void)NULL;
     temp ? List_free(&temp->waitingLockers, 1, NULL) : (void)NULL;
     temp ? free(temp) : (void)NULL;
@@ -922,6 +951,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             // with both the flags enabled
             file->ownerCanWrite.id = createFlag && lockFlag ? ownerId.id : 0;
             fs->currentNumOfFiles++;
+            fs->maxNumOfFilesReached = fs->currentNumOfFiles > fs->maxNumOfFilesReached ? fs->currentNumOfFiles : fs->maxNumOfFilesReached;
         }
     }
 
@@ -1620,6 +1650,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
             memcpy(file->data + file->size, content, contentSize);
             file->size += contentSize;
             fs->currentStorageSize += contentSize;
+            fs->maxByteOfStorageUsed = fs->currentStorageSize > fs->maxByteOfStorageUsed ? fs->currentStorageSize : fs->maxByteOfStorageUsed;
 
             // this functions invalidates the ability to write on the file
             file->ownerCanWrite.id = 0;
@@ -2767,6 +2798,8 @@ void printFileInfo_DEBUG(void *rawFile, int *_)
     puts("##############################");
 }
 
+// ACHTUNG: only for debug purposes, it is not thread safe (meant to be used in a single threaded environment)
+// nor production ready (errors are discarded, no input checks)
 void FileSystem_printAll_DEBUG(FileSystem fs)
 {
     puts("\n\n**************************************************");
