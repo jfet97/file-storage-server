@@ -194,11 +194,6 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     {
         while ((file->activeReaders > 0 || file->activeWriters > 0) && !(*error))
         {
-            puts("$$$$$$$$$$$$$$$$$$$$");
-            puts(file->path);
-            printf("file->activeReaders: %d\n", file->activeReaders);
-            printf("file->activeWriters: %d\n", file->activeWriters);
-            puts("$$$$$$$$$$$$$$$$$$$$\n");
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 *error = E_FS_COND;
             })

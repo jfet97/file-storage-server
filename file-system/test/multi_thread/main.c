@@ -20,7 +20,7 @@
 #define MAX_NUM_OF_FILES 100
 #define PATH_LENGTH 50
 #define TEXT_LENGTH 250
-#define CYCLES 3000
+#define CYCLES 30000
 
 #ifndef SYS_gettid
 #error "SYS_gettid unavailable on this system"
