@@ -1,0 +1,14 @@
+==6470== Memcheck, a memory error detector
+==6470== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==6470== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==6470== Command: /home/jfet97/Documents/SOL/file-storage-server/simple-queue/test/bin/main
+==6470== Parent PID: 864
+==6470== 
+==6470== 
+==6470== HEAP SUMMARY:
+==6470==     in use at exit: 0 bytes in 0 blocks
+==6470==   total heap usage: 229 allocs, 229 frees, 7,891 bytes allocated
+==6470== 
+==6470== All heap blocks were freed -- no leaks are possible
+==6470== 
+==6470== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

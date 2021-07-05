@@ -1,0 +1,14 @@
+==18954== Memcheck, a memory error detector
+==18954== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==18954== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==18954== Command: /home/jfet97/Documents/SOL/file-storage-server/simple-queue/test/bin/main
+==18954== Parent PID: 864
+==18954== 
+==18954== 
+==18954== HEAP SUMMARY:
+==18954==     in use at exit: 0 bytes in 0 blocks
+==18954==   total heap usage: 48,904 allocs, 48,904 frees, 1,209,835 bytes allocated
+==18954== 
+==18954== All heap blocks were freed -- no leaks are possible
+==18954== 
+==18954== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

@@ -1,0 +1,4 @@
+configurazione uno,cacca
+test due,bomboloniiiiiii
+uno due tre,stella
+workers,4
