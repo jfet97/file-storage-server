@@ -13,14 +13,14 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
-#define N_OF_CLIENTS 200
+#define N_OF_CLIENTS 20
 // #define USED_POLICY FS_REPLACEMENT_FIFO
 #define USED_POLICY FS_REPLACEMENT_LRU
 #define MAX_STORAGE_SIZE 15000
-#define MAX_NUM_OF_FILES 500
+#define MAX_NUM_OF_FILES 100
 #define PATH_LENGTH 50
 #define TEXT_LENGTH 250
-#define CYCLES 300000
+#define CYCLES 3000
 
 #ifndef SYS_gettid
 #error "SYS_gettid unavailable on this system"
