@@ -167,6 +167,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     File file = rawFile;
     int hasMutex = 0;
     int hasOrdering = 0;
+    int activeWritersUpdated = 0;
 
     // acquire the file's mutexes
     if (!(*error))
@@ -193,6 +194,11 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     {
         while ((file->activeReaders > 0 || file->activeWriters > 0) && !(*error))
         {
+            puts("$$$$$$$$$$$$$$$$$$$$");
+            puts(file->path);
+            printf("file->activeReaders: %d\n", file->activeReaders);
+            printf("file->activeWriters: %d\n", file->activeWriters);
+            puts("$$$$$$$$$$$$$$$$$$$$\n");
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 *error = E_FS_COND;
             })
@@ -203,6 +209,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     if (!(*error))
     {
         file->activeWriters++;
+        activeWritersUpdated = 1;
     }
 
     // unlock the file's mutexes
@@ -274,7 +281,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     }
 
     // acquire the file mutex
-    if (!(*error))
+    if (!hasMutex && (*error) != E_FS_MUTEX && (*error) != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -285,7 +292,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
     }
 
     // work is done
-    if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
+    if (activeWritersUpdated && hasMutex)
     {
         file->activeWriters--;
     }
@@ -453,7 +460,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
     }
 
     // acquire the mutex lock
-    if (!(*error))
+    if (!hasMutex && (*error) != E_FS_MUTEX && (*error) != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -463,19 +470,16 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
                     })
     }
 
-    if ((*error) != E_FS_MUTEX && (*error) != E_FS_COND)
+    if (activeReadersUpdated && hasMutex)
     {
-        if (activeReadersUpdated)
-        {
-            file->activeReaders--;
+        file->activeReaders--;
 
-            if (file->activeReaders == 0)
-            {
-                NON_ZERO_DO(pthread_cond_signal(&file->go), {
-                    *error = E_FS_COND;
-                })
-            };
-        }
+        if (file->activeReaders == 0)
+        {
+            NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                *error = E_FS_COND;
+            })
+        };
     }
 
     // release the file mutex
@@ -984,6 +988,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         // these flag are about the file's mutexes
         int hasMutex = 0;
         int hasOrdering = 1;
+        int activeWritersUpdated = 0;
 
         // get the file's locks
         NON_ZERO_DO(pthread_mutex_lock(&file->ordering),
@@ -1027,6 +1032,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
         if (!errToSet)
         {
             file->activeWriters++;
+            activeWritersUpdated = 1;
         }
 
         // release file's locks
@@ -1112,12 +1118,12 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
                             errToSet = E_FS_MUTEX;
                             hasMutex = 0;
                         })
-        }
 
-        // end of work
-        if (!errToSet || errToSet == E_FS_FILE_IS_LOCKED || errToSet == E_FS_MALLOC)
-        {
-            file->activeWriters--;
+            // end of work
+            if (activeWritersUpdated)
+            {
+                file->activeWriters--;
+            }
         }
 
         if (hasMutex)
@@ -1330,7 +1336,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     }
 
     // acquire the file's lock
-    if (!errToSet)
+    if (!hasMutex && errToSet != E_FS_MUTEX && errToSet != E_FS_COND && file)
     {
         hasMutex = 1;
         NON_ZERO_DO(pthread_mutex_lock(&file->mutex),
@@ -1341,29 +1347,26 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     }
 
     // work is done
-    if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND)
+    if (activeReadersUpdated && hasMutex)
     {
-        if (activeReadersUpdated)
-        {
-            file->activeReaders--;
+        file->activeReaders--;
 
-            if (file->activeReaders == 0)
-            {
-                NON_ZERO_DO(pthread_cond_signal(&file->go), {
-                    errToSet = E_FS_COND;
-                })
-            };
-        }
-
-        if (hasMutex)
+        if (file->activeReaders == 0)
         {
-            hasMutex = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
-                        {
-                            errToSet = E_FS_MUTEX;
-                            hasMutex = 1;
-                        })
-        }
+            NON_ZERO_DO(pthread_cond_signal(&file->go), {
+                errToSet = E_FS_COND;
+            })
+        };
+    }
+
+    if (hasMutex)
+    {
+        hasMutex = 0;
+        NON_ZERO_DO(pthread_mutex_unlock(&file->mutex),
+                    {
+                        errToSet = E_FS_MUTEX;
+                        hasMutex = 1;
+                    })
     }
 
     // in case of errors, destroy the result
@@ -1687,12 +1690,12 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
                         errToSet = E_FS_MUTEX;
                         hasMutex = 0;
                     })
-    }
 
-    // end of work
-    if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
-    {
-        file->activeWriters--;
+        // end of work
+        if (activeWritersUpdated)
+        {
+            file->activeWriters--;
+        }
     }
 
     if (hasMutex)
@@ -1917,12 +1920,12 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
                         errToSet = E_FS_MUTEX;
                         hasMutex = 0;
                     })
-    }
 
-    // work is done
-    if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
-    {
-        file->activeWriters--;
+        // work is done
+        if (activeWritersUpdated)
+        {
+            file->activeWriters--;
+        }
     }
 
     if (hasMutex)
@@ -2135,7 +2138,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
     }
 
     // work is done
-    if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
+    if (activeWritersUpdated && hasMutex)
     {
         file->activeWriters--;
     }
@@ -2327,7 +2330,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
     }
 
     // work is done
-    if (errToSet != E_FS_MUTEX && errToSet != E_FS_COND && activeWritersUpdated)
+    if (activeWritersUpdated && hasMutex)
     {
         file->activeWriters--;
     }

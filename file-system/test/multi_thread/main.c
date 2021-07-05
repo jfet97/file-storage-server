@@ -13,16 +13,22 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 
-#define N_OF_CLIENTS 150
+#define N_OF_CLIENTS 200
 // #define USED_POLICY FS_REPLACEMENT_FIFO
 #define USED_POLICY FS_REPLACEMENT_LRU
 #define MAX_STORAGE_SIZE 15000
-#define MAX_NUM_OF_FILES 100
-#define PATH_LENGHT 50
-#define TEXT_LENGHT 250
-#define CYCLES 200
+#define MAX_NUM_OF_FILES 500
+#define PATH_LENGTH 50
+#define TEXT_LENGTH 250
+#define CYCLES 300000
 
-// #define DEBUG
+#ifndef SYS_gettid
+#error "SYS_gettid unavailable on this system"
+#endif
+
+#define gettid() ((pid_t)syscall(SYS_gettid))
+
+#define DEBUG
 
 #ifdef DEBUG
 #define D(x) x
@@ -42,6 +48,16 @@
   {                     \
     perror(m);          \
     exit(EXIT_FAILURE); \
+  }
+
+#define PRINT_QUEUE_OF_OWNIDS(Q, E)        \
+  {                                        \
+    List_T oids = Q;                       \
+    if (oids)                              \
+    {                                      \
+      D(List_forEach(oids, printOids, E);) \
+      List_free(&oids, 1, E);              \
+    }                                      \
   }
 
 #define PRINT_RESULTING_FILE(F)            \
@@ -77,9 +93,15 @@
     List_free(&R, 1, E);                  \
   }
 
+#define PRINT_OWNER_ID(O)           \
+  puts("------------------------"); \
+  puts("Owner Id:");                \
+  printf("%d\n", O->id);            \
+  puts("------------------------");
+
 typedef struct
 {
-  char path[PATH_LENGHT];
+  char path[PATH_LENGTH];
 } FileMT;
 
 typedef struct
@@ -93,6 +115,12 @@ void printResultFile(void *rawFile, int *_)
 {
   ResultFile f = rawFile;
   PRINT_RESULTING_FILE(f)
+}
+
+void printOids(void *rawOid, int *_)
+{
+  OwnerId *oid = rawOid;
+  PRINT_OWNER_ID(oid);
 }
 
 static char *rand_string(char *str, size_t size, int term)
@@ -133,8 +161,6 @@ void *worker(void *arg)
 
   OwnerId id;
   id.id = ctx->id;
-  int file = rand() % MAX_NUM_OF_FILES;
-  int action = rand() % 8;
   int error = 0;
 
   ResultFile rf;
@@ -142,6 +168,15 @@ void *worker(void *arg)
 
   for (int i = 0; i < CYCLES; i++)
   {
+    int file = rand() % MAX_NUM_OF_FILES;
+    int action = rand() % 8;
+
+    puts("--------------------------");
+    puts(ctx->files[file].path);
+    printf("action %d\n", action);
+    printf("id thread %d\n", gettid());
+    puts("--------------------------\n");
+
     switch (action)
     {
     case 0:
@@ -154,10 +189,10 @@ void *worker(void *arg)
       else
       {
         D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
-        char text[TEXT_LENGHT];
-        rand_string(text, TEXT_LENGHT, 1);
+        char text[TEXT_LENGTH];
+        rand_string(text, TEXT_LENGTH, 1);
 
-        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGTH, id, 0, &error);, rfs, &error)
         D(PRINT_ERROR(&error);)
         FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
         D(PRINT_ERROR(&error);)
@@ -174,10 +209,10 @@ void *worker(void *arg)
       else
       {
         D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
-        char text[TEXT_LENGHT];
-        rand_string(text, TEXT_LENGHT, 1);
+        char text[TEXT_LENGTH];
+        rand_string(text, TEXT_LENGTH, 1);
 
-        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGTH, id, 0, &error);, rfs, &error)
         D(PRINT_ERROR(&error);)
         FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
         D(PRINT_ERROR(&error);)
@@ -194,10 +229,10 @@ void *worker(void *arg)
       else
       {
         D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
-        char text[TEXT_LENGHT];
-        rand_string(text, TEXT_LENGHT, 1);
+        char text[TEXT_LENGTH];
+        rand_string(text, TEXT_LENGTH, 1);
 
-        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGTH, id, 0, &error);, rfs, &error)
         D(PRINT_ERROR(&error);)
         FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
         D(PRINT_ERROR(&error);)
@@ -240,7 +275,7 @@ void *worker(void *arg)
     }
     case 6:
     {
-      PRINT_QUEUE_OF_RES_FILE(FileSystem_evictClient(ctx->fs, id, &error);, rfs, &error)
+      PRINT_QUEUE_OF_OWNIDS(FileSystem_evictClient(ctx->fs, id, &error);, &error)
       D(PRINT_ERROR(&error);)
       break;
     }
@@ -280,7 +315,7 @@ int main(void)
   FileMT files[MAX_NUM_OF_FILES];
   for (int i = 0; i < MAX_NUM_OF_FILES; i++)
   {
-    rand_string(files[i].path, PATH_LENGHT, 1);
+    rand_string(files[i].path, PATH_LENGTH, 1);
   }
 
   // INIT CONTEXTS
