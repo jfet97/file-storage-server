@@ -728,7 +728,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     if (!errToSet)
     {
         // wait my turn
-        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+        while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1015,7 +1015,7 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
 
         if (!errToSet)
         {
-            while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+            while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
             {
                 NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                     errToSet = E_FS_COND;
@@ -1555,7 +1555,7 @@ List_T FileSystem_appendToFile(FileSystem fs, char *path, char *content, size_t 
 
     if (!errToSet)
     {
-        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+        while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -1815,7 +1815,7 @@ void FileSystem_lockFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 
     if (!errToSet)
     {
-        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+        while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -2041,7 +2041,7 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
 
     if (!errToSet)
     {
-        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+        while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -2255,7 +2255,7 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 
     if (!errToSet)
     {
-        while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+        while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
         {
             NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
                 errToSet = E_FS_COND;
@@ -2423,7 +2423,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
                     })
     }
 
-    while ((file->activeReaders > 0 || file->activeWriters > 0) && !errToSet)
+    while (!errToSet && (file->activeReaders > 0 || file->activeWriters > 0))
     {
         NON_ZERO_DO(pthread_cond_wait(&file->go, &file->mutex), {
             errToSet = E_FS_COND;

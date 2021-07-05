@@ -19,10 +19,10 @@
 #define MAX_STORAGE_SIZE 15000
 #define MAX_NUM_OF_FILES 100
 #define PATH_LENGHT 50
-#define TEXT_LENGHT 1000
+#define TEXT_LENGHT 250
 #define CYCLES 200
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 #define D(x) x
@@ -134,7 +134,7 @@ void *worker(void *arg)
   OwnerId id;
   id.id = ctx->id;
   int file = rand() % MAX_NUM_OF_FILES;
-  int action = rand() % 6;
+  int action = rand() % 8;
   int error = 0;
 
   ResultFile rf;
@@ -186,51 +186,77 @@ void *worker(void *arg)
     }
     case 2:
     {
+      rf = FileSystem_openFile(ctx->fs, ctx->files[file].path, O_CREATE | O_LOCK, id, &error);
+      if (error)
+      {
+        D(PRINT_ERROR(&error);)
+      }
+      else
+      {
+        D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
+        char text[TEXT_LENGHT];
+        rand_string(text, TEXT_LENGHT, 1);
+
+        PRINT_QUEUE_OF_RES_FILE(FileSystem_appendToFile(ctx->fs, ctx->files[file].path, text, TEXT_LENGHT, id, 0, &error);, rfs, &error)
+        D(PRINT_ERROR(&error);)
+        FileSystem_closeFile(ctx->fs, ctx->files[file].path, id, &error);
+        D(PRINT_ERROR(&error);)
+      }
+      break;
+    }
+    case 3:
+    {
       PRINT_QUEUE_OF_RES_FILE(FileSystem_readNFile(ctx->fs, id, MAX_NUM_OF_FILES / 7, &error), rfs, &error)
       D(PRINT_ERROR(&error);)
       break;
     }
-    // case 2: //lock
-    //   LoggerLog("BEGIN-rt2", strlen("BEGIN-rt2"));
-    //   lockFile(f, c);
-    //   lockFile(rFile(), c);
-    //   lockFile(rFile(), c);
-    //   unlockFile(f, c);
-    //   unlockFile(rFile(), c); //NOTE:
-    //   unlockFile(rFile(), c); // These two aren't the ones above
-    //   LoggerLog("END-rt2", strlen("END-rt2"));
-    //   break;
-    // case 3:
-    //   openFile(f, 1, 1, c, NULL);
-    //   appendToFile(f, gen_random(msg, MSGLEN), MSGLEN, c, &list, 1);
-    //   if (list)
-    //   {
-    //     queueDestroy(list);
-    //     list = NULL;
-    //   }
-    //   closeFile(f, c);
-    //   break;
-    // case 4: //remove
-    //   removeFile(f, c, &victim);
-    //   if (victim)
-    //   {
-    //     freeEvicted(victim);
-    //     victim = NULL;
-    //   }
-    //   break;
-    // case 5: //removeClient
-    //   queue *notify = NULL;
-    //   notify = storeRemoveClient(c);
-    //   strerror_r(errno, buf, 200);
-    //   if (!notify)
-    //   {
-    //     perror(ANSI_COLOR_CYAN "INTERNAL FATAL ERROR" ANSI_COLOR_RESET);
-    //     exit(EXIT_FAILURE);
-    //   }
-    //   res = 0;
-    //   sprintf(ret, "%d__%d__storeRemoveClient__%s", t, res, buf);
-    //   puts(ret);
-    //   queueDestroy(notify);
+    case 4:
+    {
+      FileSystem_lockFile(ctx->fs, ctx->files[file].path, id, &error);
+      if (error)
+      {
+        D(PRINT_ERROR(&error));
+      }
+      else
+      {
+        struct timespec tim, tim2;
+        tim.tv_sec = 0;
+        tim.tv_nsec = 50000000L;
+        nanosleep(&tim, &tim2);
+        OwnerId *oid = FileSystem_unlockFile(ctx->fs, ctx->files[file].path, id, &error);
+        if (oid)
+        {
+          D(printf("id lock: %d\n", oid->id);)
+          free(oid);
+        }
+      }
+      break;
+    }
+    case 5:
+    {
+      FileSystem_removeFile(ctx->fs, ctx->files[file].path, id, &error);
+      D(PRINT_ERROR(&error);)
+      break;
+    }
+    case 6:
+    {
+      PRINT_QUEUE_OF_RES_FILE(FileSystem_evictClient(ctx->fs, id, &error);, rfs, &error)
+      D(PRINT_ERROR(&error);)
+      break;
+    }
+    case 7:
+    {
+      rf = FileSystem_readFile(ctx->fs, ctx->files[file].path, id, &error);
+      if (error)
+      {
+        D(PRINT_ERROR(&error));
+      }
+      else
+      {
+        D(IF_EXISTS_PRINT_FREE_RES_FILE(rf);)
+      }
+      break;
+    }
     default:
     {
       break;
