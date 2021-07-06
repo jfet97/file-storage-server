@@ -22,8 +22,10 @@
 #include <dirent.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include "simple_queue.h"
 
 #define UNIX_PATH_MAX 108   // TODO: ???
+#define N_OF_WORKERS 42     // TODO: lo deve leggere dal file di configurazione
 #define SOCKNAME "./myssss" // TODO: lo deve leggere dal file di configurazione
 
 #define BUF _POSIX_PIPE_BUF // TODO: ???
@@ -58,54 +60,70 @@
     exit(EXIT_FAILURE);     \
   }
 
-// ssize_t /* Read "n" bytes from a descriptor */
-// readn(int fd, void *ptr, size_t n)
-// {
-//     size_t nleft;
-//     ssize_t nread;
+#define HANDLE_QUEUE_ERROR_ABORT(E)       \
+  if (E)                                  \
+  {                                       \
+    puts(SimpleQueue_getErrorMessage(E)); \
+    exit(EXIT_FAILURE);                   \
+  }
 
-//     nleft = n;
-//     while (nleft > 0)
-//     {
-//         if ((nread = read(fd, ptr, nleft)) < 0)
-//         {
-//             if (nleft == n)
-//                 return -1; /* error, return -1 */
-//             else
-//                 break; /* error, return amount read so far */
-//         }
-//         else if (nread == 0) {
-//             break; /* EOF */
-//         }
-//         nleft -= nread;
-//         ptr += nread;
-//     }
-//     return (n - nleft); /* return >= 0 */
-// }
+/* Read "n" bytes from a descriptor */
+ssize_t readn(int fd, void *v_ptr, size_t n)
+{
+  char *ptr = v_ptr;
+  size_t nleft;
+  ssize_t nread;
 
-// ssize_t /* Write "n" bytes to a descriptor */
-// writen(int fd, void *ptr, size_t n)
-// {
-//     size_t nleft;
-//     ssize_t nwritten;
+  nleft = n;
+  while (nleft > 0)
+  {
+    if ((nread = read(fd, ptr, nleft)) < 0)
+    {
+      if (nleft == n)
+        return -1; /* error, return -1 */
+      else
+        break; /* error, return amount read so far */
+    }
+    else if (nread == 0)
+    {
+      break; /* EOF */
+    }
+    nleft -= nread;
+    ptr += nread;
+  }
+  return (n - nleft); /* return >= 0 */
+}
 
-//     nleft = n;
-//     while (nleft > 0)
-//     {
-//         if ((nwritten = write(fd, ptr, nleft)) < 0)
-//         {
-//             if (nleft == n)
-//                 return -1; /* error, return -1 */
-//             else
-//                 break; /* error, return amount written so far */
-//         }
-//         else if (nwritten == 0)
-//             break;
-//         nleft -= nwritten;
-//         ptr += nwritten;
-//     }
-//     return (n - nleft); /* return >= 0 */
-// }
+/* Write "n" bytes to a descriptor */
+ssize_t writen(int fd, void *v_ptr, size_t n)
+{
+  char *ptr = v_ptr;
+  size_t nleft;
+  ssize_t nwritten;
+
+  nleft = n;
+  while (nleft > 0)
+  {
+    if ((nwritten = write(fd, ptr, nleft)) < 0)
+    {
+      if (nleft == n)
+        return -1; /* error, return -1 */
+      else
+        break; /* error, return amount written so far */
+    }
+    else if (nwritten == 0)
+      break;
+    nleft -= nwritten;
+    ptr += nwritten;
+  }
+  return (n - nleft); /* return >= 0 */
+}
+
+typedef struct
+{
+  SimpleQueue sq;
+  int pipe;
+} WorkerContext;
 
 // used to signal the arrival of a signal
 volatile sig_atomic_t sig_flag = 0;
@@ -249,10 +267,60 @@ int setupServerSocket(char *sockname, int upm)
   return fd_skt;
 }
 
+void *worker(void *args)
+{
+  WorkerContext *ctx = args;
+  SimpleQueue sq = ctx->sq;
+  int pipe = ctx->pipe;
+
+  int error = 0;
+  int toBreak = 0;
+
+  while (!toBreak)
+  { // TODO: stop se flag
+    // get a file descriptor
+    int *fdPtr = SimpleQueue_dequeue(sq, 1, &error); // TODO: valutare bene il da farsi nei casi di errore
+    printf("fd: %d\n", *fdPtr);
+    int fd = *fdPtr;
+    free(fdPtr);
+    if (error)
+    {
+      puts(SimpleQueue_getErrorMessage(error));
+      if (error == E_SQ_QUEUE_DELETED)
+      {
+        writen(fd, "END", strlen("END")); // TODO: check errore
+      }
+      toBreak = 1;
+    }
+    else
+    {
+      // read a message
+      char buf[1000] = {0};
+      int r = read(fd, buf, 1000); // TODO: check errore e usa READ
+      printf("read %d\n", r);
+      if (r == 0)
+      {
+        close(fd);
+        toBreak = 1;
+      }
+      else
+      {
+        puts(buf);
+        writen(fd, "CIAO", strlen("CIAO")); // TODO: check errore
+        writen(pipe, &fd, sizeof(fd));      // TODO: check errore
+      }
+
+      
+    }
+  }
+
+  return NULL;
+}
+
 int main(int argc, char **argv)
 {
   // set cleanup function to remove the socket file
-  AAINZ(atexit(end), "set of the cleanup function has failed")
+  AAINZ(on_exit(end, SOCKNAME), "set of the cleanup function has failed")
 
   createDetachSigHandlerThread();
 
@@ -260,21 +328,53 @@ int main(int argc, char **argv)
 
   int fd_skt = setupServerSocket(SOCKNAME, UNIX_PATH_MAX);
 
+  // thread safe queue to send to the workers the ready fds
+  // of the clients
+  int error = 0;
+  SimpleQueue sq = SimpleQueue_create(&error);
+  HANDLE_QUEUE_ERROR_ABORT(error);
+
+  // on 0 the main thread reads which fds are ready to be setted into the fd_set set
+  // on 1 workers write such fds
+  int masterWorkersPipe[2];
+  AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
+
+  // workers
+  WorkerContext ctx;
+  ctx.pipe = masterWorkersPipe[1];
+  ctx.sq = sq;
+  pthread_t workers[N_OF_WORKERS];
+  for (int i = 0; i < N_OF_WORKERS; i++)
+  {
+    AAINZ(pthread_create(workers + i, NULL, worker, &ctx), "creation of a worker thread has failed")
+  }
+
   //---------------------------------------------------------
 
   // select machinery
 
-  int fd_num = 0, fd;
+  int fd_num = 0,
+      fd;
   fd_set set, rdset;
+
+  // determine the higher fd for now
   if (fd_skt > fd_num)
   {
     fd_num = fd_skt;
   }
+  if (masterWorkersPipe[0] > fd_num)
+  {
+    fd_num = masterWorkersPipe[0];
+  }
+
+  printf("r - w --- %d %d\n", masterWorkersPipe[0], masterWorkersPipe[1]);
+
   FD_ZERO(&set);
   FD_SET(fd_skt, &set);
+  FD_SET(masterWorkersPipe[0], &set);
 
   // stop if a signal has been handled
-  while (!sig_flag) // TODO: gestire a modo i due segnali diversi
+  while (!sig_flag) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
   {
     // timeout to periodically wake up the select to check the sig_flag flag
     struct timeval timeout;
@@ -304,9 +404,10 @@ int main(int argc, char **argv)
       {
         if (FD_ISSET(fd, &rdset))
         {
-          if (fd == fd_skt)
+          // TODO: rifiuta nuova connessione a seconda dei signal
+          if (fd == fd_skt) // new connection
           {
-            // accept a new connection
+            // accept handling
             int fd_c = accept(fd_skt, NULL, 0);
 
             if (fd_c == -1 && errno == EINTR)
@@ -320,99 +421,80 @@ int main(int argc, char **argv)
               exit(EXIT_FAILURE);
             }
 
+            // connection handling
+
             FD_SET(fd_c, &set);
             if (fd_c > fd_num)
             {
               fd_num = fd_c;
             }
-            break;
+          }
+          else if (fd == masterWorkersPipe[0]) // a worker has done its job regarding one particular client
+          {
+            // retrieve the client of which request was handled
+            int fd;
+
+            readn(masterWorkersPipe[0], &fd, sizeof(fd)); // TODO: gestire a modo errori
+
+            // update the fds set
+            FD_SET(fd, &set);
+            if (fd > fd_num) // TODO: perche si fa anche qua? per via del reset?
+            {
+              fd_num = fd;
+            }
           }
           else
-          {
-            // handle the request
+          { // if an already known client (fd) has a new request, send it to the workers
 
-            char *buf = malloc(_POSIX_PIPE_BUF * sizeof(*buf));
-            AAIN(buf, "malloc has failed");
-
-            if (sig_flag == 1)
+            // remove the fd from the set
+            FD_CLR(fd, &set);
+            if (fd == fd_num)
             {
+              fd_num--;
             }
 
-            // leggo la stringa contenente l'espressione da trasformare
-            int re = read(fd, buf, BUF);
-            if (re == -1)
+            int shouldClose = 0;
+            int shouldExit = 0;
+
+            int *fdp = malloc(sizeof(*fdp));
+            if (fdp == NULL)
             {
-              perror("READ FALLITA MALE");
-              free(buf);
-              break;
-            }
-
-            // struct pollfd * pfds = calloc(1, sizeof(struct pollfd));
-            // pfds[0].fd = fd;
-            // pfds[0].events = POLLIN;
-
-            // int poll_res;
-
-            // while((poll_res = poll(pfds,  1,  2000)) == 0) {
-            //     if(sig_flag == 1) {
-            //         break;
-            //     }
-            // }
-
-            // if(poll_res == -1) {
-            //     perror("poll SFANCULATA");
-            //     free(buf);
-            //     close(fd);
-            //     break;
-            // }
-
-            if (re == 0)
-            {
-              FD_CLR(fd, &set);
-              if (fd == fd_num)
-                fd_num--;
-
-              int close_res;
-              while (((close_res = close(fd)) == -1) && (errno == EINTR))
-                ;
-              if (close_res == -1)
-              {
-                perror("CLOSE FALLITA MALE");
-                break;
-              }
+              shouldClose = 1;
             }
             else
             {
-              char *res = malloc(_POSIX_PIPE_BUF * sizeof(*res));
+              // send the file descriptor to the workers
+              *fdp = fd;
+              SimpleQueue_enqueue(sq, fdp, &error);
 
-              strcpy(res, buf);
-              char *r = res;
-              while (*r)
+              if (error == E_SQ_MUTEX_COND || error == E_SQ_MUTEX_LOCK)
               {
-                *r = toupper(*r);
-                r++;
+                perror("Mutex error");
+                shouldClose = 1;
+                shouldExit = 1;
               }
-
-              // lo spedisco al client
-              int wres = write(fd, res, strlen(res) + 1);
-              if (wres == -1)
+              else if (error)
               {
-                perror("problemi con writen");
-                free(res);
-                break;
+                shouldClose = 1;
               }
-
-              free(res);
             }
 
-            free(buf);
+            if (shouldClose)
+            {
+              close(fd);
+            }
+
+            if (shouldExit)
+            {
+              exit(EXIT_FAILURE);
+            }
           }
         }
       }
-
     } /* chiude while(1) */
   }
 
+  // TODO
   int close_res;
   while (((close_res = close(fd_skt)) == -1) && (errno == EINTR))
     ;
@@ -424,3 +506,5 @@ int main(int argc, char **argv)
 
   return 0;
 }
+
+// TODO: join dei thread
