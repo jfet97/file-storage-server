@@ -3,7 +3,7 @@
 # make dist -> compile with compiler optimizations
 # make clean -> remove the binaries
 
-CFLAGS += -std=c99 -Wall -pedantic -pthread
+CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
 TARGET = liblogger.a logger.o
 
 debug: CFLAGS += -g

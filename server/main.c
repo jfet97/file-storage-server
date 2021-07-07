@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include "simple_queue.h"
 #include "config-parser.h"
+#include "logger.h"
 
 #define NOOP ;
 
@@ -409,7 +410,8 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
-  // read the needed configuration
+  // read the needed configurations
+  // socket file name
   char *SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
   if (error)
   {
@@ -417,6 +419,8 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
   AAIN(SOCKNAME, "invalid SOCKNAME setting");
+
+  // number of workers
   char *_N_OF_WORKERS = ConfigParser_getValue(parser, "N_OF_WORKERS", &error);
   int N_OF_WORKERS = 0;
   if (error)
@@ -433,6 +437,24 @@ int main(int argc, char **argv)
       puts("invalid N_OF_WORKERS setting");
       exit(EXIT_FAILURE);
     }
+  }
+
+  // logger file
+  char *LOG_FILE = ConfigParser_getValue(parser, "LOG_FILE", &error);
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  AAIN(LOG_FILE, "invalid LOG_FILE setting");
+
+  // set up the logger
+  Logger_create(LOG_FILE, &error);
+  if (error)
+  {
+    puts(Logger_getErrorMessage(error));
+    puts("cannot create the logger");
+    exit(EXIT_FAILURE);
   }
 
   // set cleanup function to remove the socket file

@@ -126,8 +126,8 @@ void Logger_create(const char *path, int *error)
 
     if (hasLoggerLock && errToSet && errToSet != E_LOG_SINGLETON && errToSet != E_LOG_WRONG_INPUT)
     {
-        (logger && logger->log) ? free(logger->log) : NULL;
-        logger ? free(logger) : NULL;
+        (logger && logger->log) ? free(logger->log) : (void)NULL;
+        logger ? free(logger) : (void)NULL;
         logger = NULL;
     }
 

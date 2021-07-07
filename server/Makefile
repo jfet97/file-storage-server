@@ -22,10 +22,14 @@ simple-queue:
 config-parser:
 	cd ../config-parser/ && $(MAKE) all
 
-main: main.c simple-queue config-parser
-	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -o $@
+logger:
+	cd ../logger/ && $(MAKE) all
+
+main: main.c simple-queue config-parser logger
+	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -o $@
 
 clean:
 	rm -rf $(TARGET)
 	cd ../simple-queue && make clean
 	cd ../config-parser && make clean
+	cd ../logger && make clean

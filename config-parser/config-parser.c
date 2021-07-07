@@ -264,7 +264,7 @@ void ConfigParser_printConfigs(ConfigParser parserPtr, int *error)
     error && (*error = errToSet);
 }
 
-const char *logger_error_messages[] = {
+const char *config_parser_error_messages[] = {
     "",
     "config parser internal malloc error",
     "config parser internal file error",
@@ -276,5 +276,5 @@ const char *logger_error_messages[] = {
 
 const char *ConfigParser_getErrorMessage(int errorCode)
 {
-    return logger_error_messages[errorCode];
+    return config_parser_error_messages[errorCode];
 }
