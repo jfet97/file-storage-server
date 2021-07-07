@@ -112,7 +112,7 @@
   }
 
 /* Read "n" bytes from a descriptor */
-ssize_t readn(int fd, void *v_ptr, size_t n)
+static ssize_t readn(int fd, void *v_ptr, size_t n)
 {
   char *ptr = v_ptr;
   size_t nleft;
@@ -139,7 +139,7 @@ ssize_t readn(int fd, void *v_ptr, size_t n)
 }
 
 /* Write "n" bytes to a descriptor */
-ssize_t writen(int fd, void *v_ptr, size_t n)
+static ssize_t writen(int fd, void *v_ptr, size_t n)
 {
   char *ptr = v_ptr;
   size_t nleft;
@@ -728,5 +728,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
-// TODO: join dei thread

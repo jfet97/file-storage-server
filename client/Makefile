@@ -16,8 +16,16 @@ dist: clean all
 
 all: $(TARGET)
 
-main: main.c
+libapi.a: api.o
+	ar rvs $@ $<
+
+api.o: api.c api.h
+  
+main: main.c libapi.a
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
 	-rm -f $(TARGET)
+	rm -f ./main
+	rm -f api.o
+	rm -f libapi.a

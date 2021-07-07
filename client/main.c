@@ -17,128 +17,29 @@
 #include <semaphore.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#define UNIX_PATH_MAX 108
-#define SOCKNAME "../server/mysocket"
+#include "api.h"
 
-#define BUF _POSIX_PIPE_BUF
-
-#define ec(s, r, m)     \
-  if ((s) == (r))       \
-  {                     \
-    perror(m);          \
-    exit(EXIT_FAILURE); \
+// ABORT_ABRUPTLY_IF_NON_ZERO
+#define AAINZ(code, message) \
+  if (code != 0)             \
+  {                          \
+    perror(message);         \
+    exit(EXIT_FAILURE);      \
   }
-
-#define ec_n(s, r, m)   \
-  if ((s) != (r))       \
-  {                     \
-    perror(m);          \
-    exit(EXIT_FAILURE); \
-  }                     \
-  `
-
-char *readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
-{
-  char *res = fgets(buffer, len, fp);
-
-  if (res == NULL)
-    return res;
-
-  return buffer;
-}
-
-void* client() {
-
-  int fd_skt;
-  struct sockaddr_un sa;
-
-  strncpy(sa.sun_path, SOCKNAME, UNIX_PATH_MAX);
-  sa.sun_family = AF_UNIX;
-
-  fd_skt = socket(AF_UNIX, SOCK_STREAM, 0);
-
-  while (connect(fd_skt, (struct sockaddr *)&sa, sizeof(sa)) == -1)
-  {
-    if (errno == ENOENT)
-    {
-      sleep(1);
-    }
-    else
-    {
-      perror("NIENTE CONNECT");
-      exit(EXIT_FAILURE);
-    }
-  }
-
-  for(int i = 0; i < 10000; i++)
-  {
-    char* str = "fake str";
-
-    int ew = write(fd_skt, str, strlen(str) + 1);
-    if (ew == -1)
-    {
-      perror("WRITE :(");
-    }
-
-    char *qwerty = calloc(_POSIX_PIPE_BUF, sizeof(*qwerty));
-    int er = read(fd_skt, qwerty, _POSIX_PIPE_BUF);
-    if (er == -1)
-    {
-      perror("READ :(");
-    }
-
-    printf("RES: %s\n", qwerty);
-    free(qwerty);
-  }
-
-  close(fd_skt);
-
-  return NULL;
-}
 
 int main(int argc, char **argv)
 {
+  char *sockname = argv[1]; // TODO da passare da linea di comando a modino
 
-  
+  struct timespec abstime;
+  abstime.tv_sec = 10;
+  abstime.tv_nsec = 0;
 
-  pthread_t workers[100];
-  for (int i = 0; i < 100; i++)
-  {
-    pthread_create(workers + i, NULL, client, NULL);
-  }
+  AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
-  for (int i = 0; i < 100; i++)
-  {
-    pthread_join(workers[i], NULL);
-  }
 
-  // while (1)
-  // {
-  //   char in[1000];
-  //   readLineFromFILE(in, 1000, stdin);
+  AAINZ(openFile("/test.txt", 2), "openFile has failed")
 
-  //   if (strstr(in, "EOL") != NULL)
-  //     break;
 
-  //   int ew = write(fd_skt, in, strlen(in) + 1);
-  //   if (ew == -1)
-  //   {
-  //     perror("WRITE :(");
-  //   }
-
-  //   char *qwerty = calloc(_POSIX_PIPE_BUF, sizeof(*qwerty));
-  //   int er = read(fd_skt, qwerty, _POSIX_PIPE_BUF);
-  //   if (er == -1)
-  //   {
-  //     perror("READ :(");
-  //   }
-
-  //   printf("RES: %s\n", qwerty);
-  //   free(qwerty);
-  // }
-
-  
-  exit(EXIT_SUCCESS);
-
-  return 0;
+  AAINZ(closeConnection(sockname), "closeConnection has failed")
 }

@@ -30,6 +30,8 @@ main: main.c simple-queue config-parser logger
 
 clean:
 	rm -rf $(TARGET)
+	rm -f ./log.txt
+	rm -f ./main
 	cd ../simple-queue && make clean
 	cd ../config-parser && make clean
 	cd ../logger && make clean
