@@ -30,7 +30,10 @@
 #define N_OF_WORKERS 42     // TODO: lo deve leggere dal file di configurazione
 #define SOCKNAME "./myssss" // TODO: lo deve leggere dal file di configurazione
 
-#define BUF _POSIX_PIPE_BUF // TODO: ???
+#define BUF _POSIX_PIPE_BUF
+
+#define SOFT_QUIT 1
+#define RAGE_QUIT 2
 
 #define ec(s, r, m)     \
   if ((s) == (r))       \
@@ -158,20 +161,43 @@ typedef struct
   int pipe;
 } WorkerContext;
 
-// used to signal the arrival of a signal
-volatile sig_atomic_t sig_flag = 0;
-
 // signal handler callback
-static void sig_handler_cb(int signum)
+static void sig_handler_cb(int signum, int pipe)
 {
-  printf("\nshutting down soon because of %d...\n", signum);
-  sig_flag = 1;
+  int toSend = 0;
+
+  if (signum == SIGTSTP || signum == SIGTERM)
+  {
+    printf("\nshutting down soon because of %d...\n", signum);
+    exit(EXIT_SUCCESS);
+  }
+  else if (signum == SIGQUIT || signum == SIGINT)
+  {
+    toSend = SOFT_QUIT;
+  }
+  else if (signum == SIGHUP)
+  {
+    toSend = RAGE_QUIT;
+  }
+  else
+  {
+    printf("\nUNKNOWN SIGNAL %d!\n", signum);
+    exit(EXIT_FAILURE);
+  }
+
+  if (toSend)
+  {
+    HANDLE_WRNS(writen(pipe, &toSend, sizeof(toSend)), sizeof(toSend), NOOP, perror("failed communication with main thread");)
+  }
 }
 
 // signal handler (dedicated thread)
 void *sig_handler(void *arg)
 {
   sigset_t sett;
+  int *pipePtr = arg;
+  int pipe = *pipePtr;
+  free(pipePtr);
 
   // initialize the POSIX signal set
   AAINZ(sigemptyset(&sett), "set of the POSIX signal set has failed")
@@ -179,9 +205,9 @@ void *sig_handler(void *arg)
   // add to the POSIX set the signals of interest
   AAINZ(sigaddset(&sett, SIGINT), "manipulation of POSIX signal set has failed")
   AAINZ(sigaddset(&sett, SIGQUIT), "manipulation of POSIX signal set has failed")
+  AAINZ(sigaddset(&sett, SIGHUP), "manipulation of POSIX signal set has failed")
   AAINZ(sigaddset(&sett, SIGTSTP), "manipulation of POSIX signal set has failed")
   AAINZ(sigaddset(&sett, SIGTERM), "manipulation of POSIX signal set has failed")
-  AAINZ(sigaddset(&sett, SIGHUP), "manipulation of POSIX signal set has failed")
 
   // apply the mask
   AAINZ(pthread_sigmask(SIG_SETMASK, &sett, NULL), "change mask of blocked signals has failed")
@@ -191,7 +217,7 @@ void *sig_handler(void *arg)
   // wait a signal
   AAINZ(sigwait(&sett, &signum), "suspension of execution of the signal handler thread has failed")
 
-  sig_handler_cb(signum);
+  sig_handler_cb(signum, pipe);
 
   return NULL;
 }
@@ -210,10 +236,13 @@ void end(int exit, void *arg)
 }
 
 // create and detach the signal handler thread
-void createDetachSigHandlerThread()
+void createDetachSigHandlerThread(int pipe)
 {
   pthread_t sig_handler_thread;
-  AAINZ(pthread_create(&sig_handler_thread, NULL, sig_handler, NULL), "the creation of the signal handler thread has failed")
+  int *pipePtr = malloc(sizeof(*pipePtr));
+  AAIN(pipePtr, "the creation of the signal handler thread has failed")
+  *pipePtr = pipe;
+  AAINZ(pthread_create(&sig_handler_thread, NULL, sig_handler, pipePtr), "the creation of the signal handler thread has failed")
   AAINZ(pthread_detach(sig_handler_thread), "the detachment of the signal handler thread has failed")
 }
 
@@ -312,7 +341,7 @@ void *worker(void *args)
   while (!toBreak)
   { // TODO: stop se flag
     // get a file descriptor
-    int *fdPtr = SimpleQueue_dequeue(sq, 1, &error); // TODO: valutare bene il da farsi nei casi di errore
+    int *fdPtr = SimpleQueue_dequeue(sq, 1, &error);
     if (error)
     {
       puts(SimpleQueue_getErrorMessage(error));
@@ -363,7 +392,12 @@ int main(int argc, char **argv)
   // set cleanup function to remove the socket file
   AAINZ(on_exit(end, SOCKNAME), "set of the cleanup function has failed")
 
-  createDetachSigHandlerThread();
+  // on 0 the main thread reads which signal has arrived
+  // on 1 the signal handler write such signals
+  int masterSigHandlerPipe[2];
+  AAINZ(pipe(masterSigHandlerPipe), "masterSigHandlerPipe initialization has failed")
+
+  createDetachSigHandlerThread(masterSigHandlerPipe[1]);
 
   maskSIGPIPEAndHandledSignals();
 
@@ -407,23 +441,25 @@ int main(int argc, char **argv)
   {
     fd_num = masterWorkersPipe[0];
   }
-
-  printf("r - w --- %d %d\n", masterWorkersPipe[0], masterWorkersPipe[1]);
+  if (masterSigHandlerPipe[0] > fd_num)
+  {
+    fd_num = masterSigHandlerPipe[0];
+  }
 
   FD_ZERO(&set);
   FD_SET(fd_skt, &set);
   FD_SET(masterWorkersPipe[0], &set);
+  FD_SET(masterSigHandlerPipe[0], &set);
+
+  // will be filled when a signal will come
+  int signal = 0;
 
   // stop if a signal has been handled
-  while (!sig_flag) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
+  while (signal != RAGE_QUIT) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
   {
-    // timeout to periodically wake up the select to check the sig_flag flag
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 500000; // 0.5 seconds
 
     rdset = set;
-    int sel_res = select(fd_num + 1, &rdset, NULL, NULL, &timeout);
+    int sel_res = select(fd_num + 1, &rdset, NULL, NULL, NULL);
     if (sel_res == -1 && errno == EINTR)
     {
       perror("select function was interrupted by a signal");
@@ -441,12 +477,12 @@ int main(int argc, char **argv)
     }
     else
     {
-      for (fd = 0; fd <= fd_num && !sig_flag; fd++)
+      for (fd = 0; fd <= fd_num && signal != RAGE_QUIT; fd++)
       {
         if (FD_ISSET(fd, &rdset))
         {
-          // TODO: rifiuta nuova connessione a seconda dei signal
-          if (fd == fd_skt) // new connection
+          // refuse new connection when a signal has arrived
+          if (fd == fd_skt && signal == 0) // new connection
           {
             // accept handling
             int fd_c = accept(fd_skt, NULL, 0);
@@ -476,6 +512,19 @@ int main(int argc, char **argv)
             int fd;
 
             readn(masterWorkersPipe[0], &fd, sizeof(fd)); // TODO: gestire a modo errori
+
+            // update the fds set
+            FD_SET(fd, &set);
+            if (fd > fd_num) // TODO: perche si fa anche qua? per via del reset?
+            {
+              fd_num = fd;
+            }
+          }
+          else if (fd == masterSigHandlerPipe[0]) // a signal has arrived
+          {
+            // retrieve the signal
+
+            readn(masterSigHandlerPipe[0], &signal, sizeof(signal)); // TODO: gestire a modo errori
 
             // update the fds set
             FD_SET(fd, &set);
@@ -533,6 +582,18 @@ int main(int argc, char **argv)
         }
       }
     } /* chiude while(1) */
+  }
+
+  if (signal == RAGE_QUIT)
+  {
+    // TODO: check errore
+    SimpleQueue_delete(&sq, &error);
+  }
+
+  // TODO: check errori
+  for (int i = 0; i < N_OF_WORKERS; i++)
+  {
+    pthread_join(workers[i], NULL);
   }
 
   // TODO
