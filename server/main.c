@@ -24,6 +24,8 @@
 #include <sys/types.h>
 #include "simple_queue.h"
 
+#define NOOP ;
+
 #define UNIX_PATH_MAX 108   // TODO: ???
 #define N_OF_WORKERS 42     // TODO: lo deve leggere dal file di configurazione
 #define SOCKNAME "./myssss" // TODO: lo deve leggere dal file di configurazione
@@ -65,6 +67,37 @@
   {                                       \
     puts(SimpleQueue_getErrorMessage(E)); \
     exit(EXIT_FAILURE);                   \
+  }
+
+#define HANDLE_WRN(A, S, OK, NE, IZ, IE) \
+  errno = 0;                             \
+  int r = A;                             \
+  if (r == S)                            \
+  {                                      \
+    OK                                   \
+  }                                      \
+  else if (r < S)                        \
+  {                                      \
+    NE                                   \
+  }                                      \
+  else if (r == 0)                       \
+  {                                      \
+    IZ                                   \
+  }                                      \
+  else if (r == -1)                      \
+  {                                      \
+    IE                                   \
+  }
+
+#define HANDLE_WRNS(A, S, OK, KO) \
+  HANDLE_WRN(A, S, OK, KO, KO, KO)
+
+#define CLOSE(FD, S) \
+  errno = 0;         \
+  int c = close(FD); \
+  if (c == -1)       \
+  {                  \
+    perror(S);       \
   }
 
 /* Read "n" bytes from a descriptor */
@@ -280,37 +313,45 @@ void *worker(void *args)
   { // TODO: stop se flag
     // get a file descriptor
     int *fdPtr = SimpleQueue_dequeue(sq, 1, &error); // TODO: valutare bene il da farsi nei casi di errore
-    printf("fd: %d\n", *fdPtr);
-    int fd = *fdPtr;
-    free(fdPtr);
     if (error)
     {
       puts(SimpleQueue_getErrorMessage(error));
-      if (error == E_SQ_QUEUE_DELETED)
-      {
-        writen(fd, "END", strlen("END")); // TODO: check errore
-      }
       toBreak = 1;
     }
     else
     {
+      int fd = *fdPtr;
+      free(fdPtr);
+
       // read a message
       char buf[1000] = {0};
-      int r = read(fd, buf, 1000); // TODO: check errore e usa READ
-      printf("read %d\n", r);
-      if (r == 0)
-      {
-        close(fd);
-        toBreak = 1;
-      }
-      else
-      {
-        puts(buf);
-        writen(fd, "CIAO", strlen("CIAO")); // TODO: check errore
-        writen(pipe, &fd, sizeof(fd));      // TODO: check errore
-      }
+      HANDLE_WRN(
+          readn(fd, buf, 9),
+          9,
+          {
+            // if it is all ok
 
-      
+            // TODO: da sradicare
+            puts(buf);
+            writen(fd, "CIAO", strlen("CIAO"));
+
+            HANDLE_WRNS(writen(pipe, &fd, sizeof(fd)), sizeof(fd), NOOP,
+                        {
+                          perror("failed communication with main thread");
+                          toBreak = 1;
+                        });
+          },
+          { // if not enough characters were read, close the connection
+            CLOSE(fd, "cannot close the communication with a client");
+          },
+          { // the client has closed the connection, free the resources related to it
+            CLOSE(fd, "cannot close the communication with a client");
+          },
+          {
+            // if an error has occurred, try to close the connection
+            perror("Cannot receive data from a client, the connection will be closed");
+            CLOSE(fd, "cannot close the communication with a client");
+          })
     }
   }
 
