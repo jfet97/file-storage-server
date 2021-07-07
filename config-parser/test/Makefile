@@ -25,4 +25,4 @@ bin/main: ./main.c ../libconfig-parser.a ../config-parser.h
 	$(CC) $(CFLAGS) $^ -I ../ -L ../ -lconfig-parser -o $@
 
 clean: 
-	-rm -rf $(BUILDDIR)
+	(rm -rf $(BUILDDIR) || true) && (cd ../ && $(MAKE) clean)

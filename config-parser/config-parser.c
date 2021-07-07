@@ -41,7 +41,7 @@ struct ConfigParser
 // -------------------------------
 // INTERNALS
 
-int insert(InternalListNode **listPtr, InternalListNode *newNode)
+static int insert(InternalListNode **listPtr, InternalListNode *newNode)
 {
     int codeToRet = 0;
 
@@ -58,7 +58,7 @@ int insert(InternalListNode **listPtr, InternalListNode *newNode)
     return codeToRet;
 }
 
-void forceFree(InternalListNode **listPtr)
+static void forceFree(InternalListNode **listPtr)
 {
     if (listPtr && *listPtr)
     {
@@ -67,13 +67,13 @@ void forceFree(InternalListNode **listPtr)
     }
 }
 
-void *searchByKey(InternalListNode *list, const char *key)
+static void *searchByKey(InternalListNode *list, const char *key)
 {
     if (list == NULL)
     {
         return NULL;
     }
-    else if (list->key == key)
+    else if (strcmp(list->key, key) == 0)
     {
         return list->value;
     }
@@ -83,7 +83,7 @@ void *searchByKey(InternalListNode *list, const char *key)
     }
 }
 
-int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
+static int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
 {
     int errToSet = 0;
     int feofRes = 0;
@@ -192,8 +192,8 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
 
     if (errToSet)
     {
-        parser ? forceFree(&(parser->internal_list)) : NULL;
-        parser ? free(parser) : NULL;
+        parser ? forceFree(&(parser->internal_list)) : (void)NULL;
+        parser ? free(parser) : (void)NULL;
         parser = NULL;
     }
 
@@ -220,7 +220,7 @@ void ConfigParser_delete(ConfigParser *parserPtr, int *error)
     error && (*error = errToSet);
 }
 
-char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, size_t len, int *error)
+char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, int *error)
 {
 
     int errToSet = 0;

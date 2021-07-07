@@ -3,7 +3,7 @@
 # make dist -> compile with compiler optimizations
 # make clean -> remove the binaries
 
-CFLAGS += -std=c99 -Wall -pedantic
+CFLAGS += -std=c99 -Wall -pedantic -Wno-unused-value
 TARGET = libconfig-parser.a config-parser.o
 
 debug: CFLAGS += -g
@@ -25,4 +25,4 @@ main: ../config-parser.c
 	$(CC) $(CFLAGS) $< -c -o $@
 
 clean:
-	-rm -f $(TARGET)
+	rm -f $(TARGET)

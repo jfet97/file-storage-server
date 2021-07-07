@@ -19,8 +19,13 @@ all: $(TARGET)
 simple-queue:
 	cd ../simple-queue/ && $(MAKE) all
 
-main: main.c ../simple-queue/libsimple_queue.a ../simple-queue/simple_queue.h
-	$(CC) $(CFLAGS) $^ -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -o $@
+config-parser:
+	cd ../config-parser/ && $(MAKE) all
+
+main: main.c simple-queue config-parser
+	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -o $@
 
 clean:
-	-rm -f $(TARGET)
+	rm -rf $(TARGET)
+	cd ../simple-queue && make clean
+	cd ../config-parser && make clean

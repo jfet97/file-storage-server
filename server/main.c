@@ -23,12 +23,11 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include "simple_queue.h"
+#include "config-parser.h"
 
 #define NOOP ;
 
-#define UNIX_PATH_MAX 108   // TODO: ???
-#define N_OF_WORKERS 42     // TODO: lo deve leggere dal file di configurazione
-#define SOCKNAME "./myssss" // TODO: lo deve leggere dal file di configurazione
+#define UNIX_PATH_MAX 108 // TODO: ???
 
 #define BUF _POSIX_PIPE_BUF
 
@@ -230,7 +229,7 @@ void end(int exit, void *arg)
   if (sockname)
   {
     // remove the socket file
-    remove(SOCKNAME);
+    remove(sockname);
   }
   printf("Exited with code: %d\n", exit);
   puts("Goodbye, cruel world....");
@@ -377,7 +376,7 @@ void *worker(void *args)
           },
           { // the client has closed the connection, free the resources related to it
             // signal the eevent to the main thread
-            int minusOne = -1; 
+            int minusOne = -1;
             HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
                         {
                           perror("failed communication with main thread");
@@ -397,30 +396,68 @@ void *worker(void *args)
 
 int main(int argc, char **argv)
 {
+  int error = 0;
+
+  char *configPath = argv[1];
+  AAIN(configPath, "missing configuration path");
+
+  // parser that reads the configuration file
+  ConfigParser parser = ConfigParser_parse(configPath, &error);
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+
+  // read the needed configuration
+  char *SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  AAIN(SOCKNAME, "invalid SOCKNAME setting");
+  char *_N_OF_WORKERS = ConfigParser_getValue(parser, "N_OF_WORKERS", &error);
+  int N_OF_WORKERS = 0;
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  else
+  {
+    AAIN(_N_OF_WORKERS, "invalid N_OF_WORKERS setting");
+    N_OF_WORKERS = atoi(_N_OF_WORKERS);
+    if (N_OF_WORKERS <= 0)
+    {
+      puts("invalid N_OF_WORKERS setting");
+      exit(EXIT_FAILURE);
+    }
+  }
+
   // set cleanup function to remove the socket file
   AAINZ(on_exit(end, SOCKNAME), "set of the cleanup function has failed")
+
+  // thread safe queue to send to the workers the ready fds
+  // of the clients
+  SimpleQueue sq = SimpleQueue_create(&error);
+  HANDLE_QUEUE_ERROR_ABORT(error);
 
   // on 0 the main thread reads which signal has arrived
   // on 1 the signal handler write such signals
   int masterSigHandlerPipe[2];
   AAINZ(pipe(masterSigHandlerPipe), "masterSigHandlerPipe initialization has failed")
 
+  // on 0 the main thread reads which fds are ready to be setted into the fd_set set
+  // on 1 workers write such fds
+  int masterWorkersPipe[2];
+  AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
+
   createDetachSigHandlerThread(masterSigHandlerPipe[1]);
 
   maskSIGPIPEAndHandledSignals();
 
   int fd_skt = setupServerSocket(SOCKNAME, UNIX_PATH_MAX);
-
-  // thread safe queue to send to the workers the ready fds
-  // of the clients
-  int error = 0;
-  SimpleQueue sq = SimpleQueue_create(&error);
-  HANDLE_QUEUE_ERROR_ABORT(error);
-
-  // on 0 the main thread reads which fds are ready to be setted into the fd_set set
-  // on 1 workers write such fds
-  int masterWorkersPipe[2];
-  AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
 
   // workers
   WorkerContext ctx;
@@ -511,10 +548,8 @@ int main(int argc, char **argv)
 
             // increase the number of connected clients
             nOfConnectedClients++;
-            printf("nOfConnectedClients %d\n", nOfConnectedClients);
 
             // connection handling
-
             FD_SET(fd_c, &set);
             if (fd_c > fd_num)
             {
@@ -547,12 +582,6 @@ int main(int argc, char **argv)
           }
           else if (fd == masterSigHandlerPipe[0]) // a signal has arrived
           {
-
-            // FD_SET(fd, &set); // TODO: veramente necessario qua???
-            // if (fd > fd_num)
-            // {
-            //   fd_num = fd;
-            // }
 
             // retrieve the signal
             readn(masterSigHandlerPipe[0], &signal, sizeof(signal)); // TODO: gestire a modo errori
@@ -610,8 +639,14 @@ int main(int argc, char **argv)
 
   if (signal)
   {
-    // TODO: check errore
+    // delete the queue, signaling to the workers
+    // that they must return
     SimpleQueue_delete(&sq, &error);
+    if (error)
+    {
+      puts(SimpleQueue_getErrorMessage(error));
+      error = 0;
+    }
   }
 
   // TODO: check errori
@@ -620,13 +655,21 @@ int main(int argc, char **argv)
     pthread_join(workers[i], NULL);
   }
 
-  // TODO
+  // free the parser
+  ConfigParser_delete(&parser, &error);
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    error = 0;
+  }
+
+  // close the server socket fd
   int close_res;
   while (((close_res = close(fd_skt)) == -1) && (errno == EINTR))
     ;
   if (close_res == -1)
   {
-    perror("CLOSE FALLITA MALE");
+    perror("closing the socket socket fd has failed");
     return -1;
   }
 

@@ -25,7 +25,7 @@ int main(void)
 {
 
     int error;
-    ConfigParser parser = ConfigParser_parse("./config.txt", &error);
+    ConfigParser parser = ConfigParser_parse("../config.txt", &error);
     print(error);
 
     ConfigParser_printConfigs(parser, &error);

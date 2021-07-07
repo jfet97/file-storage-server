@@ -298,9 +298,9 @@ SimpleQueue SimpleQueue_create(int *error)
     if (errToSet)
     {
         queueData ? deleteByKey(&internal_queues_data_list, queueToRet) : NULL;
-        queueData ? free(queueData) : NULL;
-        (queueToRet && queueToRet->queue) ? free(queueToRet->queue) : NULL;
-        queueToRet ? free(queueToRet) : NULL;
+        queueData ? free(queueData) : (void)NULL;
+        (queueToRet && queueToRet->queue) ? free(queueToRet->queue) : (void)NULL;
+        queueToRet ? free(queueToRet) : (void)NULL;
 
         queueToRet = NULL;
     }
