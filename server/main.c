@@ -79,10 +79,6 @@
   {                                      \
     OK                                   \
   }                                      \
-  else if (r < S)                        \
-  {                                      \
-    NE                                   \
-  }                                      \
   else if (r == 0)                       \
   {                                      \
     IZ                                   \
@@ -90,6 +86,10 @@
   else if (r == -1)                      \
   {                                      \
     IE                                   \
+  }                                      \
+  else if (r < S)                        \
+  {                                      \
+    NE                                   \
   }
 
 #define HANDLE_WRNS(A, S, OK, KO) \
@@ -173,6 +173,7 @@ static void sig_handler_cb(int signum, int pipe)
   }
   else if (signum == SIGQUIT || signum == SIGINT)
   {
+    // TODO: CAPIRE BENE IL DA FARSI CHE IL SERVER RIMANE BLOCCATO COME UNO SCEMO, PROB SULLA SELECT
     toSend = SOFT_QUIT;
   }
   else if (signum == SIGHUP)
@@ -361,9 +362,10 @@ void *worker(void *args)
             // if it is all ok
 
             // TODO: da sradicare
-            puts(buf);
+            // puts(buf);
             writen(fd, "CIAO", strlen("CIAO"));
 
+            // sent the fd back
             HANDLE_WRNS(writen(pipe, &fd, sizeof(fd)), sizeof(fd), NOOP,
                         {
                           perror("failed communication with main thread");
@@ -374,6 +376,12 @@ void *worker(void *args)
             CLOSE(fd, "cannot close the communication with a client");
           },
           { // the client has closed the connection, free the resources related to it
+            // signal the eevent to the main thread
+            int minusOne = -1; 
+            HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
+                        {
+                          perror("failed communication with main thread");
+                        });
             CLOSE(fd, "cannot close the communication with a client");
           },
           {
@@ -454,8 +462,11 @@ int main(int argc, char **argv)
   // will be filled when a signal will come
   int signal = 0;
 
+  // number of connected clients
+  int nOfConnectedClients = 0;
+
   // stop if a signal has been handled
-  while (signal != RAGE_QUIT) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
+  while (signal != RAGE_QUIT && (signal != SOFT_QUIT || nOfConnectedClients > 0)) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
   {
 
     rdset = set;
@@ -477,7 +488,7 @@ int main(int argc, char **argv)
     }
     else
     {
-      for (fd = 0; fd <= fd_num && signal != RAGE_QUIT; fd++)
+      for (fd = 0; fd <= fd_num && signal != RAGE_QUIT && (signal != SOFT_QUIT || nOfConnectedClients > 0); fd++)
       {
         if (FD_ISSET(fd, &rdset))
         {
@@ -498,6 +509,10 @@ int main(int argc, char **argv)
               exit(EXIT_FAILURE);
             }
 
+            // increase the number of connected clients
+            nOfConnectedClients++;
+            printf("nOfConnectedClients %d\n", nOfConnectedClients);
+
             // connection handling
 
             FD_SET(fd_c, &set);
@@ -509,29 +524,38 @@ int main(int argc, char **argv)
           else if (fd == masterWorkersPipe[0]) // a worker has done its job regarding one particular client
           {
             // retrieve the client of which request was handled
+            // or -1 if a client has disconnected
             int fd;
 
             readn(masterWorkersPipe[0], &fd, sizeof(fd)); // TODO: gestire a modo errori
+            printf("received %d\n", fd);
 
-            // update the fds set
-            FD_SET(fd, &set);
-            if (fd > fd_num) // TODO: perche si fa anche qua? per via del reset?
+            if (fd == -1)
             {
-              fd_num = fd;
+              // decrease the number of connected clients
+              nOfConnectedClients--;
+              printf("nOfConnectedClients %d\n", nOfConnectedClients);
+            }
+            else
+            {
+              FD_SET(fd, &set);
+              if (fd > fd_num)
+              {
+                fd_num = fd;
+              }
             }
           }
           else if (fd == masterSigHandlerPipe[0]) // a signal has arrived
           {
+
+            // FD_SET(fd, &set); // TODO: veramente necessario qua???
+            // if (fd > fd_num)
+            // {
+            //   fd_num = fd;
+            // }
+
             // retrieve the signal
-
             readn(masterSigHandlerPipe[0], &signal, sizeof(signal)); // TODO: gestire a modo errori
-
-            // update the fds set
-            FD_SET(fd, &set);
-            if (fd > fd_num) // TODO: perche si fa anche qua? per via del reset?
-            {
-              fd_num = fd;
-            }
           }
           else
           { // if an already known client (fd) has a new request, send it to the workers
@@ -584,7 +608,7 @@ int main(int argc, char **argv)
     } /* chiude while(1) */
   }
 
-  if (signal == RAGE_QUIT)
+  if (signal)
   {
     // TODO: check errore
     SimpleQueue_delete(&sq, &error);
