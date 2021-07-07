@@ -35,19 +35,7 @@
 #define SOFT_QUIT 1
 #define RAGE_QUIT 2
 
-#define ec(s, r, m)     \
-  if ((s) == (r))       \
-  {                     \
-    perror(m);          \
-    exit(EXIT_FAILURE); \
-  }
-
-#define ec_n(s, r, m)   \
-  if ((s) != (r))       \
-  {                     \
-    perror(m);          \
-    exit(EXIT_FAILURE); \
-  }
+#define LOG_LEN 128
 
 // ABORT_ABRUPTLY_IF_NON_ZERO
 #define AAINZ(code, message) \
@@ -101,6 +89,26 @@
   if (c == -1)       \
   {                  \
     perror(S);       \
+  }
+
+#define LOG(M)                         \
+  {                                    \
+    int e = 0;                         \
+    Logger_log(M, strlen(M), &e);      \
+    if (e)                             \
+    {                                  \
+      puts(Logger_getErrorMessage(e)); \
+    }                                  \
+  }
+
+#define FLUSH_LOGGER                   \
+  {                                    \
+    int e = 0;                         \
+    Logger_flush(&e);                  \
+    if (e)                             \
+    {                                  \
+      puts(Logger_getErrorMessage(e)); \
+    }                                  \
   }
 
 /* Read "n" bytes from a descriptor */
@@ -166,6 +174,11 @@ static void sig_handler_cb(int signum, int pipe)
 {
   int toSend = 0;
 
+  char toLog[LOG_LEN] = {0};
+  sprintf(toLog, "Received signal %d -", signum);
+  LOG(toLog);
+  FLUSH_LOGGER;
+
   if (signum == SIGTSTP || signum == SIGTERM)
   {
     printf("\nshutting down soon because of %d...\n", signum);
@@ -173,7 +186,6 @@ static void sig_handler_cb(int signum, int pipe)
   }
   else if (signum == SIGQUIT || signum == SIGINT)
   {
-    // TODO: CAPIRE BENE IL DA FARSI CHE IL SERVER RIMANE BLOCCATO COME UNO SCEMO, PROB SULLA SELECT
     toSend = SOFT_QUIT;
   }
   else if (signum == SIGHUP)
@@ -490,6 +502,9 @@ int main(int argc, char **argv)
   {
     AAINZ(pthread_create(workers + i, NULL, worker, &ctx), "creation of a worker thread has failed")
   }
+  char toLog[LOG_LEN] = {0};
+  sprintf(toLog, "%d workers launched -", N_OF_WORKERS);
+  LOG(toLog)
 
   //---------------------------------------------------------
 
@@ -571,6 +586,10 @@ int main(int argc, char **argv)
             // increase the number of connected clients
             nOfConnectedClients++;
 
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "New connection, %d clients currently connected -", nOfConnectedClients);
+            LOG(toLog)
+
             // connection handling
             FD_SET(fd_c, &set);
             if (fd_c > fd_num)
@@ -585,13 +604,14 @@ int main(int argc, char **argv)
             int fd;
 
             readn(masterWorkersPipe[0], &fd, sizeof(fd)); // TODO: gestire a modo errori
-            printf("received %d\n", fd);
 
             if (fd == -1)
             {
               // decrease the number of connected clients
               nOfConnectedClients--;
-              printf("nOfConnectedClients %d\n", nOfConnectedClients);
+              char toLog[LOG_LEN] = {0};
+              sprintf(toLog, "A client has disconnected, %d clients currently connected -", nOfConnectedClients);
+              LOG(toLog)
             }
             else
             {
@@ -610,6 +630,9 @@ int main(int argc, char **argv)
           }
           else
           { // if an already known client (fd) has a new request, send it to the workers
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Request received from client (fd) %d -", fd);
+            LOG(toLog)
 
             // remove the fd from the set
             FD_CLR(fd, &set);
@@ -682,6 +705,14 @@ int main(int argc, char **argv)
   if (error)
   {
     puts(ConfigParser_getErrorMessage(error));
+    error = 0;
+  }
+
+  // free the logger
+  Logger_delete(1, &error);
+  if (error)
+  {
+    puts(Logger_getErrorMessage(error));
     error = 0;
   }
 

@@ -18,7 +18,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #define UNIX_PATH_MAX 108
-#define SOCKNAME "../server/myssss"
+#define SOCKNAME "../server/mysocket"
 
 #define BUF _POSIX_PIPE_BUF
 
