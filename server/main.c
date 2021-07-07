@@ -37,6 +37,9 @@
 
 #define LOG_LEN 128
 
+#define OPEN_FILE 10000
+#define READ_FILE 10001
+
 // ABORT_ABRUPTLY_IF_NON_ZERO
 #define AAINZ(code, message) \
   if (code != 0)             \
@@ -60,7 +63,7 @@
     exit(EXIT_FAILURE);                   \
   }
 
-#define HANDLE_WRN(A, S, OK, NE, IZ, IE) \
+#define HANDLE_WRN(A, S, OK, IZ, IE, NE) \
   errno = 0;                             \
   int r = A;                             \
   if (r == S)                            \
@@ -342,6 +345,66 @@ int setupServerSocket(char *sockname, int upm)
   return fd_skt;
 }
 
+// if alloc == 0, dest is considered the address where to write the read data
+// if alloc == 1, dest is considered the address of a pointer that must be setted to the address of the read data
+// readSize is used to return the size of the read data
+int getData(int fd, void *dest, size_t *readSize, int alloc)
+{
+  size_t size = 0;
+
+  // control flow flags
+  int sizeRead = 0;
+  int error = 0;
+  int done = 0;
+
+  // read the size
+  HANDLE_WRNS(readn(fd, &size, sizeof(size)), sizeof(size), sizeRead = 1;, error = 1;)
+
+  if (sizeRead)
+  {
+    // default behaviour: write to dest
+    void *writeTo = dest;
+
+    if (alloc)
+    {
+      // in this situation dest is considered as the address
+      // of a pointer that we have to set to the read data
+      char **destPtr = dest;
+
+      // malloc enough space
+      *destPtr = malloc(sizeof(**destPtr) * size);
+
+      // we have to write into the allocated space
+      writeTo = *destPtr;
+    }
+
+    // read the data if writeTo is not NULL
+    if (writeTo)
+    {
+      HANDLE_WRNS(readn(fd, writeTo, size), size, done = 1;, error = 1;)
+    }
+    else
+    {
+      error = 1;
+    }
+  }
+
+  if (done)
+  {
+    // return the size as well
+    readSize ? *readSize = size : 0;
+    return 0;
+  }
+
+  if (error)
+  {
+    perror("getData has failed");
+    return -1;
+  }
+
+  return -1;
+}
+
 void *worker(void *args)
 {
   WorkerContext *ctx = args;
@@ -365,42 +428,121 @@ void *worker(void *args)
       int fd = *fdPtr;
       free(fdPtr);
 
-      // read a message
-      char buf[1000] = {0};
+      // control flow flags
+      int operationHasBeenRead = 0;
+      int closeConnection = 0;
+      int sendBackFileDescriptor = 0;
+
+      // read the operation
+      int op = 0;
       HANDLE_WRN(
-          readn(fd, buf, 9),
-          9,
+          readn(fd, &op, sizeof(op)),
+          sizeof(op),
           {
-            // if it is all ok
-
-            // TODO: da sradicare
-            // puts(buf);
-            writen(fd, "CIAO", strlen("CIAO"));
-
-            // sent the fd back
-            HANDLE_WRNS(writen(pipe, &fd, sizeof(fd)), sizeof(fd), NOOP,
-                        {
-                          perror("failed communication with main thread");
-                          toBreak = 1;
-                        });
-          },
-          { // if not enough characters were read, close the connection
-            CLOSE(fd, "cannot close the communication with a client");
+            // success
+            operationHasBeenRead = 1;
           },
           { // the client has closed the connection, free the resources related to it
-            // signal the eevent to the main thread
-            int minusOne = -1;
-            HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
-                        {
-                          perror("failed communication with main thread");
-                        });
-            CLOSE(fd, "cannot close the communication with a client");
+            // signal the event to the main thread
+            closeConnection = 1;
           },
           {
             // if an error has occurred, try to close the connection
+            closeConnection = 1;
             perror("Cannot receive data from a client, the connection will be closed");
-            CLOSE(fd, "cannot close the communication with a client");
+          },
+          { // if not enough characters were read, close the connection
+            closeConnection = 1;
           })
+
+      if (operationHasBeenRead)
+      {
+        switch (op)
+        {
+        case OPEN_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathnameSize;
+          int flags;
+          if (getData(fd, &pathname, &pathnameSize, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            if (getData(fd, &flags, NULL, 0) != 0)
+            {
+              closeConnection = 1;
+            }
+            else
+            {
+              puts("OPEN_FILE");
+              puts(pathname);
+              printf("path size %d\n", pathnameSize);
+              printf("flags %d\n", flags);
+              sendBackFileDescriptor = 1;
+              // TODO: integrare filesystem e rispondere a modo
+              // liberare il liberabile
+            }
+          }
+
+          break;
+        }
+        case READ_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathnameSize;
+          if (getData(fd, &pathname, &pathnameSize, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            puts("READ_FILE");
+            puts(pathname);
+            printf("path size %d\n", pathnameSize);
+            sendBackFileDescriptor = 1;
+            // TODO: integrare filesystem e rispondere a modo
+            // liberare il liberabile
+          }
+          break;
+        }
+        default:
+        {
+          closeConnection = 1;
+          break;
+        }
+        }
+      }
+
+      if (closeConnection)
+      {
+        int minusOne = -1;
+        HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
+                    {
+                      perror("failed communication with main thread");
+                    });
+
+        CLOSE(fd, "cannot close the communication with a client");
+      }
+
+      if (sendBackFileDescriptor)
+      {
+        // sent the fd back
+        HANDLE_WRNS(writen(pipe, &fd, sizeof(fd)), sizeof(fd), NOOP,
+                    {
+                      perror("failed communication with main thread");
+                      toBreak = 1;
+                    });
+      }
     }
   }
 

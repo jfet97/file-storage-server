@@ -31,6 +31,7 @@
 #define O_LOCK 0x02
 
 #define OPEN_FILE 10000
+#define READ_FILE 10001
 
 // will be fulfilled in openConnection
 char socketname[UNIX_PATH_MAX] = {0};
@@ -189,6 +190,16 @@ static int doRequest(int request, ...)
 
     break;
   }
+  case READ_FILE:
+  {
+    char *pathname = va_arg(valist, char *);
+    size_t pathLen = strlen(pathname) + 1; // null terminator included
+
+    AINZ(sendRequestType(READ_FILE), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(pathname, pathLen), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+
+    break;
+  }
   default:
   {
     break;
@@ -273,6 +284,7 @@ int closeConnection(const char *sockname)
 
 // O_CREATE | O_LOCK for using both
 // 0 for no flag
+// TODO: pathname must be absolute, supportare relativi
 int openFile(const char *pathname, int flags)
 {
   CHECK_FD
@@ -295,11 +307,30 @@ int openFile(const char *pathname, int flags)
 
   AINZ(doRequest(OPEN_FILE, pathname, flags), "openFile has failed", return -1;)
 
-  // TODO: response
+  // TODO: gestire risposta
 
   return 0;
 }
-int readFile(const char *pathname, void **buf, size_t *size);
+
+// TODO: pathname must be absolute, supportare relativi
+int readFile(const char *pathname, void **buf, size_t *size) {
+  CHECK_FD
+
+  AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
+
+  if (strchr(pathname, '/') != pathname)
+  {
+    puts("invalid pathname, it must be absolute");
+    errno = EINVAL;
+    return -1;
+  }
+
+  AINZ(doRequest(READ_FILE, pathname), "readFile has failed", return -1;)
+
+  // TODO: gestire risposta
+
+  return 0;
+}
 int writeFile(const char *pathname, const char *dirname);
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 int lockFile(const char *pathname);

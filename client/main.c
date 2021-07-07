@@ -29,7 +29,7 @@
 
 int main(int argc, char **argv)
 {
-  char *sockname = argv[1]; // TODO da passare da linea di comando a modino
+  char *sockname = "../server/mysocket"; // TODO da passare da linea di comando a modino
 
   struct timespec abstime;
   abstime.tv_sec = 10;
@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 
 
   AAINZ(openFile("/test.txt", 2), "openFile has failed")
-
+  AAINZ(readFile("/test.txt", NULL, NULL), "readFile has failed")
 
   AAINZ(closeConnection(sockname), "closeConnection has failed")
 }
