@@ -35,6 +35,8 @@ int main(int argc, char **argv)
   abstime.tv_sec = 10;
   abstime.tv_nsec = 0;
 
+  homeDirEvictedFiles = "./dirname";
+
   AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
   AAINZ(openFile("./bin/test2.txt", 1), "openFile has failed")
