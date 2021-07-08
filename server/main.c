@@ -318,6 +318,7 @@ void *worker(void *args)
       if (operationHasBeenRead)
       {
         switch (op)
+        // TODO: aggiungi i log
         {
         case OPEN_FILE:
         {
@@ -373,6 +374,54 @@ void *worker(void *args)
             // TODO: integrare filesystem e rispondere a modo
             // liberare il liberabile
           }
+          break;
+        }
+        case WRITE_FILE:
+        case APPEND_TO_FILE:
+        {
+          int isWrite = op == WRITE_FILE;
+
+          char *pathname = NULL;
+          size_t pathLen, bufLen;
+          void *buf = NULL;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            if (getData(fd, &buf, &bufLen, 1) != 0)
+            {
+              closeConnection = 1;
+              if (buf)
+              {
+                free(buf);
+              }
+            }
+            else
+            {
+              if (isWrite)
+              {
+                puts("WRITE_FILE");
+              }
+              else
+              {
+                puts("APPEND_TO_FILE");
+              }
+              puts(pathname);
+              printf("path size %d\n", pathLen);
+              printf("buf of size %d: %.*s\n", bufLen, (int)bufLen, (char *)buf);
+
+              sendBackFileDescriptor = 1;
+              // TODO: integrare filesystem e rispondere a modo
+              // liberare il liberabile
+            }
+          }
+
           break;
         }
         default:

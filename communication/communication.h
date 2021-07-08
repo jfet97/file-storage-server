@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-	#include <unistd.h>
+#include <unistd.h>
 
 
 #define OPEN_FILE 10000
 #define READ_FILE 10001
+#define WRITE_FILE 10002
+#define APPEND_TO_FILE 10003
 
 #define HANDLE_WRN(A, S, OK, NE, IZ, IE, D) \
   errno = 0;                                \

@@ -40,6 +40,8 @@ int main(int argc, char **argv)
 
   AAINZ(openFile("/test.txt", 2), "openFile has failed")
   AAINZ(readFile("/test.txt", NULL, NULL), "readFile has failed")
+  AAINZ(writeFile("/home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/test2.txt", "DIRNAME"), "writeFile has failed")
+  AAINZ(appendToFile("/test.txt", "ciao ciao", strlen("ciao ciao"), "DIRNAME"), "appendToFile has failed")
 
   AAINZ(closeConnection(sockname), "closeConnection has failed")
 }

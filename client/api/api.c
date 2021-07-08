@@ -89,7 +89,7 @@ static int doRequest(int request, ...)
   {
     char *pathname = va_arg(valist, char *);
     int flags = va_arg(valist, int);
-    size_t pathLen = strlen(pathname) + 1; // null terminator included
+    size_t pathLen = strlen(pathname);
 
     AINZ(sendRequestType(fd_skt, OPEN_FILE), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
     AINZ(sendData(fd_skt, pathname, pathLen), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
@@ -100,10 +100,33 @@ static int doRequest(int request, ...)
   case READ_FILE:
   {
     char *pathname = va_arg(valist, char *);
-    size_t pathLen = strlen(pathname) + 1; // null terminator included
+    size_t pathLen = strlen(pathname);
 
     AINZ(sendRequestType(fd_skt, READ_FILE), "READ_FILE request failed", toRet = -1; toErrno = errno;)
     AINZ(sendData(fd_skt, pathname, pathLen), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+
+    break;
+  }
+  case WRITE_FILE:
+  case APPEND_TO_FILE:
+  {
+    char *pathname = va_arg(valist, char *);
+    size_t pathLen = strlen(pathname); // null terminator included
+    void *buf = va_arg(valist, void *);
+    size_t size = va_arg(valist, size_t);
+    int isWrite = va_arg(valist, int);
+
+    if (isWrite)
+    {
+      AINZ(sendRequestType(fd_skt, WRITE_FILE), "WRITE_FILE request failed", toRet = -1; toErrno = errno;)
+    }
+    else
+    {
+      AINZ(sendRequestType(fd_skt, APPEND_TO_FILE), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
+    }
+
+    AINZ(sendData(fd_skt, pathname, pathLen), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(fd_skt, buf, size), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
 
     break;
   }
@@ -117,6 +140,99 @@ static int doRequest(int request, ...)
   errno = toErrno;
   return toRet;
 }
+
+int readLocalFile(const char *path, void **bufPtr, size_t *size)
+{
+  AIN(path, "invalid path argument for readLocalFile", errno = EINVAL; return -1;)
+  AIN(bufPtr, "invalid bufPtr argument for readLocalFile", errno = EINVAL; return -1;)
+  AIN(size, "invalid size argument for readLocalFile", errno = EINVAL; return -1;)
+
+  FILE *fptr = NULL;
+  *bufPtr = NULL;
+
+  // control flow flags
+  int error = 0;
+  int closeFile = 0;
+  int freeBuf = 0;
+
+  // open the file
+  fptr = fopen(path, "r");
+  AIN(fptr, "cannot open the file in readLocalFile", error = 1;)
+
+  // go to the end of the file
+  if (!error)
+  {
+    AINZ(fseek(fptr, 0L, SEEK_END), "readLocalFile internal error: fseek", error = 1; closeFile = 1;)
+  }
+
+  // read its size
+  if (!error)
+  {
+    *size = ftell(fptr);
+    AINO(*size, "readLocalFile internal error: ftell", error = 1; closeFile = 1;)
+  }
+
+  // rewind the file pointer
+  if (!error)
+  {
+    errno = 0;
+    rewind(fptr);
+    if (errno)
+    {
+      error = 1;
+      closeFile = 1;
+      perror("readLocalFile internal error: rewind");
+    }
+  }
+
+  // alloc enough space
+  if (!error)
+  {
+    *bufPtr = malloc(sizeof(char) * (*size));
+    AIN(*bufPtr, "readLocalFile internal error: malloc", error = 1; closeFile = 1;)
+  }
+
+  // read the file into the buffer
+  if (!error)
+  {
+    int readSize = fread(*bufPtr, sizeof(char), *size, fptr);
+    if (readSize < *size)
+    {
+      perror("readLocalFile internal error: fread");
+      error = 1;
+      freeBuf = 1;
+    }
+
+    closeFile = 1;
+  }
+
+  if (closeFile)
+  {
+    errno = 0;
+    fclose(fptr);
+    if (errno)
+    {
+      perror("readLocalFile internal error: fclose");
+    }
+  }
+
+  if (freeBuf)
+  {
+    free(*bufPtr);
+    *bufPtr = NULL;
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+// ---------------- API ----------------
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
 {
@@ -224,7 +340,8 @@ int readFile(const char *pathname, void **buf, size_t *size)
 {
   CHECK_FD
 
-  AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
+  AIN(pathname, "invalid pathname argument for readFile", errno = EINVAL; return -1;)
+  // TODO: AIN(buf, "invalid buf argument for readFile", errno = EINVAL; return -1;) obbligatorio?
 
   if (strchr(pathname, '/') != pathname)
   {
@@ -240,8 +357,61 @@ int readFile(const char *pathname, void **buf, size_t *size)
   return 0;
 }
 
-int writeFile(const char *pathname, const char *dirname);
-int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
+// TODO: pathname must be absolute, supportare relativi
+int writeFile(const char *pathname, const char *dirname)
+{
+  CHECK_FD
+
+  AIN(pathname, "invalid pathname argument for writeFile", errno = EINVAL; return -1;)
+
+  if (strchr(pathname, '/') != pathname)
+  {
+    puts("invalid pathname, it must be absolute");
+    errno = EINVAL;
+    return -1;
+  }
+
+  void *buf = NULL;
+  size_t size = 0;
+  AINZ(
+      readLocalFile(pathname, &buf, &size), "writeFile has failed - cannot read the file from local disk",
+      {
+        if (buf)
+        {
+          free(buf);
+        }
+        return -1;
+      });
+
+  AINZ(doRequest(WRITE_FILE, pathname, buf, size, 1), "writeFile has failed", return -1;)
+
+  // TODO: gestire risposta
+
+  return 0;
+}
+
+// TODO: pathname must be absolute, supportare relativi
+int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname)
+{
+  CHECK_FD
+
+  AIN(pathname, "invalid pathname argument for appendToFile", errno = EINVAL; return -1;)
+  AIN(buf, "invalid buf argument for appendToFile", errno = EINVAL; return -1;)
+
+  if (strchr(pathname, '/') != pathname)
+  {
+    puts("invalid pathname, it must be absolute");
+    errno = EINVAL;
+    return -1;
+  }
+
+  AINZ(doRequest(APPEND_TO_FILE, pathname, buf, size, 0), "appendToFile has failed", return -1;)
+
+  // TODO: gestire risposta
+
+  return 0;
+}
+
 int lockFile(const char *pathname);
 int unlockFile(const char *pathname);
 int closeFile(const char *pathname);
