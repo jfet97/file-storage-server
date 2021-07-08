@@ -605,7 +605,7 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
         printf("Number of times the replacing algoritm has run was: %d\n", fs->numOfReplacementAlgoRuns);
         puts("Follows a list of file still present in the file-system");
         List_forEach(fs->filesList, printFile, NULL);
-        puts("END...HAVE A NICE DAY!");
+        puts("FILE-SYSTEM HAS ENDED...HAVE A NICE DAY!");
 
         // the filesDict is not responsible of freeing the File entries nor the string keys
         icl_hash_destroy(fs->filesDict, NULL, NULL);
@@ -1060,6 +1060,17 @@ ResultFile FileSystem_openFile(FileSystem fs, char *path, int flags, OwnerId own
             if (file->currentlyLockedBy.id != 0 && file->currentlyLockedBy.id != ownerId.id)
             {
                 errToSet = E_FS_FILE_IS_LOCKED;
+            }
+
+            // fail if the file was already opened by the requestor
+            if (!errToSet)
+            {
+                int alreadyOpened = List_search(file->openedBy, List_getComparator(file->openedBy, NULL), &ownerId, &errToSet);
+                TO_GENERAL_ERROR(errToSet);
+                if (!errToSet && alreadyOpened)
+                {
+                    errToSet = E_FS_FILE_ALREADY_OPENED;
+                }
             }
 
             // else, if the lockFlag was set lock the file
@@ -2759,6 +2770,7 @@ const char *filesystem_error_messages[] = {
     "filesystem file already locked",
     "filesystem result-file is null",
     "filesystem eviction failed",
+    "filesystem file was already opened and not closed",
 };
 
 const char *FileSystem_getErrorMessage(int errorCode)

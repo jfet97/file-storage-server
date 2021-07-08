@@ -336,6 +336,7 @@ int closeConnection(const char *sockname)
 int openFile(const char *pathname, int flags)
 {
   CHECK_FD
+  int error = 0;
 
   // check arguments
   AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
@@ -349,9 +350,98 @@ int openFile(const char *pathname, int flags)
   char *absPath = absolutify(pathname);
   AIN(absPath, "openFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(OPEN_FILE, absPath, flags), "openFile has failed", return -1;)
+  AINZ(doRequest(OPEN_FILE, absPath, flags), "openFile has failed", error = 1;)
 
-  // TODO: gestire risposta
+  int resCode;
+  if (!error)
+  {
+    // read the result code
+    AINZ(getData(fd_skt, &resCode, 0, 0), "openFile has failed", error = 1;)
+    printf("remote openFile has received %d as result code\n", resCode);
+  }
+
+  if (!error)
+  {
+    if (resCode == -1)
+    {
+      // read the error message
+      char *errMess;
+      size_t errMessLen;
+      AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "openFile has failed", error = 1;)
+
+      // print the error message
+      if (!error)
+      {
+        printf("%.*s\n", (int)errMessLen, errMess);
+      }
+
+      if (errMess)
+      {
+        free(errMess);
+      }
+
+      // because resCode == -1
+      error = 1;
+    }
+    else
+    {
+      // read if a file was evicted
+      int evicted;
+      AINZ(getData(fd_skt, &evicted, 0, 0), "openFile has failed", error = 1;)
+
+      // if a file ws evicted, get it
+      if (!error && evicted)
+      {
+        // read the file path
+        char *filepath;
+        size_t filepathLen;
+        AINZ(getData(fd_skt, &filepath, &filepathLen, 1), "openFile has failed", error = 1;)
+
+        if (!error)
+        {
+          printf("%.*s was evicted\n", (int)filepathLen, filepath);
+
+          // read if the file was empty
+          int emptyFile;
+          AINZ(getData(fd_skt, &emptyFile, 0, 0), "openFile has failed", error = 1;)
+
+          // if it was empty, do nothing
+          if (!error && emptyFile)
+          {
+            puts("the file was empty");
+          }
+          // otherwise, read its content
+          if (!error && !emptyFile)
+          {
+            // read the file content
+            void *data;
+            size_t dataLen;
+            AINZ(getData(fd_skt, &data, &dataLen, 1), "openFile has failed", error = 1;)
+
+            if (!error)
+            {
+              printf("%.*s\n", (int)dataLen, (char *)data);
+            }
+
+            if (data)
+            {
+              free(data);
+            }
+          }
+        }
+
+        if (filepath)
+        {
+          free(filepath);
+        }
+      }
+      // if no file was evicted do nothing
+      else if (!error && !evicted)
+      {
+        puts("no file was evicted");
+      }
+    }
+  }
 
   free(absPath);
   return 0;

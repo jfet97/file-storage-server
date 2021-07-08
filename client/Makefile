@@ -31,7 +31,8 @@ bin/main: main.c api
 
 main-d: main.c api-d
 	(mkdir bin || true)
-	cd bin && touch test2.txt && echo "prova prova" >> test2.txt
+	cd bin && touch test1.txt && echo "prova1 prova1" >> test1.txt
+	cd bin && touch test2.txt && echo "prova2 prova2" >> test2.txt
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o $(TARGET)
 
 clean:

@@ -117,9 +117,9 @@ int sendRequestType(int fd, int request)
   HANDLE_WRNS(writen(fd, &request, sizeof(request)), sizeof(request), return 0;, return -1;)
 }
 
-int sendData(int fd, void *data, size_t size)
+int sendData(int fd, const void *data, size_t size)
 {
   HANDLE_WRNS(writen(fd, &size, sizeof(size)), sizeof(size),
-              HANDLE_WRNS(writen(fd, data, size), size, return 0;, return -1;),
+              HANDLE_WRNS(writen(fd, (void*)data, size), size, return 0;, return -1;),
               return -1;)
 }

@@ -129,6 +129,7 @@ void print(int *error)
 // non posso leggere un file lockato da un altro
 // non posso rimuovere un file che non ho lockato
 // posso chiudere un file lockato da altri
+// non posso aprire (indipendentemente dai flag) un file gia' aperto da me precedentemente e non chiuso
 
 int main(void)
 {

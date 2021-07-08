@@ -37,7 +37,7 @@
 #define SOFT_QUIT 1
 #define RAGE_QUIT 2
 
-#define LOG_LEN 128
+#define LOG_LEN PATH_MAX * 2
 
 // ABORT_ABRUPTLY_IF_NON_ZERO
 #define AAINZ(code, message) \
@@ -45,6 +45,14 @@
   {                          \
     perror(message);         \
     exit(EXIT_FAILURE);      \
+  }
+
+// ABORT_IF_NON_ZERO
+#define AINZ(code, message, action) \
+  if (code != 0)                    \
+  {                                 \
+    perror(message);                \
+    action                          \
   }
 
 // ABORT_ABRUPTLY_IF_NULL
@@ -93,7 +101,7 @@
 typedef struct
 {
   SimpleQueue sq; // used to receive the fds from the main thread
-  int pipe; // used to send back fds to the main thread
+  int pipe;       // used to send back fds to the main thread
   FileSystem fs;
 } WorkerContext;
 
@@ -274,6 +282,7 @@ void *worker(void *args)
 {
   WorkerContext *ctx = args;
   SimpleQueue sq = ctx->sq;
+  FileSystem fs = ctx->fs;
   int pipe = ctx->pipe;
 
   int error = 0;
@@ -285,7 +294,7 @@ void *worker(void *args)
     int *fdPtr = SimpleQueue_dequeue(sq, 1, &error);
     if (error)
     {
-      puts(SimpleQueue_getErrorMessage(error));
+      // puts(SimpleQueue_getErrorMessage(error));
       toBreak = 1;
     }
     else
@@ -317,6 +326,7 @@ void *worker(void *args)
             closeConnection = 1;
           })
 
+      // handle requested operation
       if (operationHasBeenRead)
       {
         switch (op)
@@ -325,9 +335,9 @@ void *worker(void *args)
         case OPEN_FILE:
         {
           char *pathname = NULL;
-          size_t pathnameSize;
+          size_t pathLen;
           int flags;
-          if (getData(fd, &pathname, &pathnameSize, 1) != 0)
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
           {
             closeConnection = 1;
             if (pathname)
@@ -343,13 +353,62 @@ void *worker(void *args)
             }
             else
             {
-              puts("OPEN_FILE");
-              puts(pathname);
-              printf("path size %d\n", pathnameSize);
-              printf("flags %d\n", flags);
-              sendBackFileDescriptor = 1;
-              // TODO: integrare filesystem e rispondere a modo
-              // liberare il liberabile
+              char toLog[LOG_LEN] = {0};
+              sprintf(toLog, "Requested OPEN_FILE operation. File %s of size %d with flags %d -", pathname, pathLen, flags);
+              LOG(toLog);
+
+              OwnerId id;
+              id.id = fd;
+
+              ResultFile rf = FileSystem_openFile(fs, pathname, flags, id, &error);
+              int resCode = 0;
+              if (error)
+              {
+                // in case of file-system error send a resCode of -1 and an error message
+                // but do not close the connection
+                // Note: a finer error handling would be possible and should be done in a real application
+                resCode = -1;
+                const char *mess = FileSystem_getErrorMessage(error);
+                sendBackFileDescriptor = 1;
+                AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+                AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+              }
+              else
+              {
+                // in case of success send a resCode of 0
+                AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+                if (rf)
+                {
+                  // and the evicted file, if any
+                  int evicted = 1;
+                  AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
+                  AINZ(sendData(fd, rf->path, strlen(rf->path)), "cannot respond to a client", closeConnection = 1;)
+
+                  if (rf->size)
+                  {
+                    int emptyFile = 0;
+                    AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
+                    AINZ(sendData(fd, rf->data, rf->size), "cannot respond to a client", closeConnection = 1;)
+                  }
+                  else
+                  {
+                    int emptyFile = 1;
+                    AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
+                  }
+                  ResultFile_free(&rf, NULL);
+                }
+                else
+                {
+                  int evicted = 0;
+                  AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
+                }
+                if (!closeConnection)
+                {
+                  sendBackFileDescriptor = 1;
+                }
+              }
+
+              free(pathname);
             }
           }
 
@@ -580,7 +639,7 @@ int main(int argc, char **argv)
   // ----------------------------------------------------------------------
 
   // set up the file-system
-  
+
   FileSystem fs = FileSystem_create(MAX_FS_SIZE, MAX_FS_N_FILES, EVICTION_POLICY, &error);
 
   if (error)
