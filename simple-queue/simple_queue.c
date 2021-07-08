@@ -51,11 +51,12 @@ typedef struct InternalListNode
 // -------------------------------
 // -------------------------------
 // INTERNALS
+
 InternalListNode *internal_queues_data_list = NULL;
 
 pthread_mutex_t iqdl_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int insert(InternalListNode **listPtr, SimpleQueue key, QueueData *value)
+static int insert(InternalListNode **listPtr, SimpleQueue key, QueueData *value)
 {
     int codeToRet = 0;
 
@@ -75,7 +76,7 @@ int insert(InternalListNode **listPtr, SimpleQueue key, QueueData *value)
     return codeToRet;
 }
 
-QueueData *searchByKey(InternalListNode *list, SimpleQueue key)
+static QueueData *searchByKey(InternalListNode *list, SimpleQueue key)
 {
     if (list == NULL)
     {
@@ -91,7 +92,7 @@ QueueData *searchByKey(InternalListNode *list, SimpleQueue key)
     }
 }
 
-QueueData *deleteByKey(InternalListNode **listPtr, SimpleQueue key)
+static QueueData *deleteByKey(InternalListNode **listPtr, SimpleQueue key)
 {
     if (listPtr == NULL)
     {
@@ -115,7 +116,7 @@ QueueData *deleteByKey(InternalListNode **listPtr, SimpleQueue key)
     }
 }
 
-SimpleNode *SimpleNode_create(void *element, SimpleNode *next, SimpleNode *prev)
+static SimpleNode *SimpleNode_create(void *element, SimpleNode *next, SimpleNode *prev)
 {
     SimpleNode *newNode = malloc(sizeof(*newNode));
 
@@ -129,18 +130,18 @@ SimpleNode *SimpleNode_create(void *element, SimpleNode *next, SimpleNode *prev)
     return newNode;
 }
 
-void SimpleNode_free(SimpleNode **nodePtr)
+static void SimpleNode_free(SimpleNode **nodePtr)
 {
     free(*nodePtr);
     *nodePtr = NULL;
 }
 
-size_t List_length(SimpleList list)
+static size_t List_length(SimpleList list)
 {
     return list->length;
 }
 
-SimpleList List_create()
+static SimpleList List_create()
 {
     SimpleList newList = malloc(sizeof(*newList));
 
@@ -154,7 +155,7 @@ SimpleList List_create()
     return newList;
 }
 
-void List__free(SimpleNode **nodePtr)
+static void List__free(SimpleNode **nodePtr)
 {
     if (*nodePtr != NULL)
     {
@@ -163,14 +164,14 @@ void List__free(SimpleNode **nodePtr)
     }
 }
 
-void List_free(SimpleList *listPtr)
+static void List_free(SimpleList *listPtr)
 {
     List__free(&(*listPtr)->head);
     free(*listPtr);
     *listPtr = NULL;
 }
 
-SimpleNode *List__getNodeByIndex(SimpleNode *node, int index, int counter)
+static SimpleNode *List__getNodeByIndex(SimpleNode *node, int index, int counter)
 {
     if (node == NULL)
     {
@@ -186,7 +187,7 @@ SimpleNode *List__getNodeByIndex(SimpleNode *node, int index, int counter)
     }
 }
 
-SimpleNode *List_getNodeByIndex(SimpleList list, int index)
+static SimpleNode *List_getNodeByIndex(SimpleList list, int index)
 {
     if (index < 0)
     {
@@ -195,7 +196,7 @@ SimpleNode *List_getNodeByIndex(SimpleList list, int index)
     return List__getNodeByIndex(list->head, index, 0);
 }
 
-int List_insertTail(SimpleList list, void *element)
+static int List_insertTail(SimpleList list, void *element)
 { // O(1)
     SimpleNode *newNode = SimpleNode_create(element, NULL, list->tail);
 
@@ -220,7 +221,7 @@ int List_insertTail(SimpleList list, void *element)
     return 0;
 }
 
-void List_deleteHead(SimpleList list)
+static void List_deleteHead(SimpleList list)
 { // O(1)
     if (list->head == NULL)
     { // empty list
@@ -330,10 +331,11 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
     if (!errToSet)
     {
         hasDictLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasDictLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasDictLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -359,10 +361,11 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         if (!queue_data->to_be_canceled_soon)
         {
             hasQueueLock = 1;
-            NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-                errToSet = E_SQ_MUTEX_LOCK;
-                hasQueueLock = 0;
-            })
+            NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
+                        {
+                            errToSet = E_SQ_MUTEX_LOCK;
+                            hasQueueLock = 0;
+                        })
         }
     }
 
@@ -377,10 +380,11 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 
         hasQueueLock = 0;
         // lascio la lock sulla queue
-        NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasQueueLock = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasQueueLock = 1;
+                    })
     }
 
     int pmd_res = 0;
@@ -388,18 +392,20 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
     {
         hasQueueLock = 1;
         // lascio la possibilita' a thread fermi di accorgersi che stiamo chiudendo
-        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasQueueLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasQueueLock = 0;
+                    })
 
         if (hasQueueLock)
         {
             hasQueueLock = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
-                errToSet = E_SQ_MUTEX_LOCK;
-                hasQueueLock = 1;
-            })
+            NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)),
+                        {
+                            errToSet = E_SQ_MUTEX_LOCK;
+                            hasQueueLock = 1;
+                        })
         }
     }
 
@@ -454,10 +460,11 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
     if (!errToSet)
     {
         hasDictLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasDictLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasDictLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -480,10 +487,11 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
     if (!errToSet)
     {
         hasQueueLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasQueueLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasQueueLock = 0;
+                    })
     }
 
     if (hasDictLock)
@@ -532,10 +540,11 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
     if (!errToSet)
     {
         hasDictLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasDictLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasDictLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -558,10 +567,11 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
     if (!errToSet)
     {
         hasQueueLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasQueueLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasQueueLock = 0;
+                    })
     }
 
     if (hasDictLock)
@@ -630,10 +640,11 @@ size_t SimpleQueue_length(SimpleQueue queue, int *error)
     if (!errToSet)
     {
         hasDictLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasDictLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasDictLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -656,10 +667,11 @@ size_t SimpleQueue_length(SimpleQueue queue, int *error)
     if (!errToSet)
     {
         hasQueueLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)), {
-            errToSet = E_SQ_MUTEX_LOCK;
-            hasQueueLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasQueueLock = 0;
+                    })
     }
 
     if (hasDictLock)

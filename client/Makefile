@@ -36,7 +36,6 @@ main-d: main.c api-d
 
 clean:
 	-rm -rf $(BUILDDIR)
-	rm -f ./main
 	rm -f api.o
 	rm -f libapi.a
 	cd ./api && make clean

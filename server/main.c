@@ -26,10 +26,11 @@
 #include "config-parser.h"
 #include "logger.h"
 #include "communication.h"
+#include "file-system.h"
 
 #define NOOP ;
 
-#define UNIX_PATH_MAX 108 // TODO: ???
+#define UNIX_PATH_MAX 108
 
 #define BUF _POSIX_PIPE_BUF
 
@@ -91,8 +92,9 @@
 
 typedef struct
 {
-  SimpleQueue sq;
-  int pipe;
+  SimpleQueue sq; // used to receive the fds from the main thread
+  int pipe; // used to send back fds to the main thread
+  FileSystem fs;
 } WorkerContext;
 
 // signal handler callback
@@ -462,10 +464,12 @@ int main(int argc, char **argv)
 {
   int error = 0;
 
+  // ----------------------------------------------------------------------
+
   char *configPath = argv[1];
   AAIN(configPath, "missing configuration path");
 
-  // parser that reads the configuration file
+  // parser the configuration file
   ConfigParser parser = ConfigParser_parse(configPath, &error);
   if (error)
   {
@@ -473,8 +477,10 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
-  // read the needed configurations
-  // socket file name
+  // ----------------------------------------------------------------------
+  // read the configurations file
+
+  // - socket file name
   char *SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
   if (error)
   {
@@ -483,7 +489,7 @@ int main(int argc, char **argv)
   }
   AAIN(SOCKNAME, "invalid SOCKNAME setting");
 
-  // number of workers
+  // - number of workers
   char *_N_OF_WORKERS = ConfigParser_getValue(parser, "N_OF_WORKERS", &error);
   int N_OF_WORKERS = 0;
   if (error)
@@ -502,7 +508,7 @@ int main(int argc, char **argv)
     }
   }
 
-  // logger file
+  // - logger file
   char *LOG_FILE = ConfigParser_getValue(parser, "LOG_FILE", &error);
   if (error)
   {
@@ -510,6 +516,80 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
   AAIN(LOG_FILE, "invalid LOG_FILE setting");
+
+  // - file-system settings
+  char *_MAX_FS_SIZE = ConfigParser_getValue(parser, "MAX_FS_SIZE", &error);
+  int MAX_FS_SIZE = 0;
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  else
+  {
+    AAIN(_MAX_FS_SIZE, "invalid MAX_FS_SIZE setting");
+    MAX_FS_SIZE = atoi(_MAX_FS_SIZE);
+    if (MAX_FS_SIZE <= 0)
+    {
+      puts("invalid MAX_FS_SIZE setting");
+      exit(EXIT_FAILURE);
+    }
+  }
+  char *_MAX_FS_N_FILES = ConfigParser_getValue(parser, "MAX_FS_N_FILES", &error);
+  int MAX_FS_N_FILES = 0;
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  else
+  {
+    AAIN(_MAX_FS_N_FILES, "invalid MAX_FS_N_FILES setting");
+    MAX_FS_N_FILES = atoi(_MAX_FS_N_FILES);
+    if (MAX_FS_N_FILES <= 0)
+    {
+      puts("invalid MAX_FS_N_FILES setting");
+      exit(EXIT_FAILURE);
+    }
+  }
+  char *_EVICTION_POLICY = ConfigParser_getValue(parser, "EVICTION_POLICY", &error);
+  int EVICTION_POLICY = 0;
+  if (error)
+  {
+    puts(ConfigParser_getErrorMessage(error));
+    exit(EXIT_FAILURE);
+  }
+  else
+  {
+    AAIN(_EVICTION_POLICY, "invalid EVICTION_POLICY setting");
+    if (strncmp(_EVICTION_POLICY, "FIFO", strlen("FIFO")))
+    {
+      EVICTION_POLICY = FS_REPLACEMENT_FIFO;
+    }
+    else if (strncmp(_EVICTION_POLICY, "LRU", strlen("LRU")))
+    {
+      EVICTION_POLICY = FS_REPLACEMENT_LRU;
+    }
+    else
+    {
+      puts("invalid EVICTION_POLICY setting");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // ----------------------------------------------------------------------
+
+  // set up the file-system
+  
+  FileSystem fs = FileSystem_create(MAX_FS_SIZE, MAX_FS_N_FILES, EVICTION_POLICY, &error);
+
+  if (error)
+  {
+    puts(FileSystem_getErrorMessage(error));
+    puts("cannot create the file-system");
+    exit(EXIT_FAILURE);
+  }
+  // ----------------------------------------------------------------------
 
   // set up the logger
   Logger_create(LOG_FILE, &error);
@@ -520,13 +600,20 @@ int main(int argc, char **argv)
     exit(EXIT_FAILURE);
   }
 
+  // ----------------------------------------------------------------------
+
   // set cleanup function to remove the socket file
   AAINZ(on_exit(end, SOCKNAME), "set of the cleanup function has failed")
+  // ----------------------------------------------------------------------
 
   // thread safe queue to send to the workers the ready fds
   // of the clients
   SimpleQueue sq = SimpleQueue_create(&error);
   HANDLE_QUEUE_ERROR_ABORT(error);
+
+  // ----------------------------------------------------------------------
+
+  // create pipes
 
   // on 0 the main thread reads which signal has arrived
   // on 1 the signal handler write such signals
@@ -538,16 +625,26 @@ int main(int argc, char **argv)
   int masterWorkersPipe[2];
   AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
 
+  // ----------------------------------------------------------------------
+
+  // run signal handler
   createDetachSigHandlerThread(masterSigHandlerPipe[1]);
 
   maskSIGPIPEAndHandledSignals();
 
+  // ----------------------------------------------------------------------
+
+  // create server socket
+
   int fd_skt = setupServerSocket(SOCKNAME, UNIX_PATH_MAX);
 
-  // workers
+  // ----------------------------------------------------------------------
+
+  // launch workers
   WorkerContext ctx;
   ctx.pipe = masterWorkersPipe[1];
   ctx.sq = sq;
+  ctx.fs = fs;
   pthread_t workers[N_OF_WORKERS];
   for (int i = 0; i < N_OF_WORKERS; i++)
   {
@@ -557,7 +654,7 @@ int main(int argc, char **argv)
   sprintf(toLog, "%d workers launched -", N_OF_WORKERS);
   LOG(toLog)
 
-  //---------------------------------------------------------
+  // ----------------------------------------------------------------------
 
   // select machinery
 
@@ -591,7 +688,7 @@ int main(int argc, char **argv)
   int nOfConnectedClients = 0;
 
   // stop if a signal has been handled
-  while (signal != RAGE_QUIT && (signal != SOFT_QUIT || nOfConnectedClients > 0)) // TODO: gestire a modo i due segnali diversi, evitare timeout...usare pipe apposita
+  while (signal != RAGE_QUIT && (signal != SOFT_QUIT || nOfConnectedClients > 0))
   {
 
     rdset = set;
@@ -605,11 +702,6 @@ int main(int argc, char **argv)
     {
       perror("select function has raised an error");
       exit(EXIT_FAILURE);
-    }
-    else if (sel_res == 0)
-    {
-      // timeout: go to check if a signal has arrrived
-      continue;
     }
     else
     {
@@ -733,6 +825,8 @@ int main(int argc, char **argv)
     } /* chiude while(1) */
   }
 
+  // ----------------------------------------------------------------------
+
   if (signal)
   {
     // delete the queue, signaling to the workers
@@ -745,11 +839,15 @@ int main(int argc, char **argv)
     }
   }
 
+  // ----------------------------------------------------------------------
+
   // TODO: check errori
   for (int i = 0; i < N_OF_WORKERS; i++)
   {
     pthread_join(workers[i], NULL);
   }
+
+  // ----------------------------------------------------------------------
 
   // free the parser
   ConfigParser_delete(&parser, &error);
@@ -759,6 +857,18 @@ int main(int argc, char **argv)
     error = 0;
   }
 
+  // ----------------------------------------------------------------------
+
+  // free the file-system
+  FileSystem_delete(&fs, &error);
+  if (error)
+  {
+    puts(FileSystem_getErrorMessage(error));
+    error = 0;
+  }
+
+  // ----------------------------------------------------------------------
+
   // free the logger
   Logger_delete(1, &error);
   if (error)
@@ -766,6 +876,8 @@ int main(int argc, char **argv)
     puts(Logger_getErrorMessage(error));
     error = 0;
   }
+
+  // ----------------------------------------------------------------------
 
   // close the server socket fd
   int close_res;
@@ -776,6 +888,8 @@ int main(int argc, char **argv)
     perror("closing the socket socket fd has failed");
     return -1;
   }
+
+  // ----------------------------------------------------------------------
 
   return 0;
 }

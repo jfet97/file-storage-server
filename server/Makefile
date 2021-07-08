@@ -31,6 +31,9 @@ logger:
 communication:
 	cd ../communication/ && $(MAKE) all
 
+file-system:
+	cd ../file-system/ && $(MAKE) all
+
 simple-queue-d:
 	cd ../simple-queue/ && $(MAKE) debug
 
@@ -43,19 +46,23 @@ logger-d:
 communication-d:
 	cd ../communication/ && $(MAKE) debug
 
-bin/main: main.c simple-queue config-parser logger communication
-	(mkdir bin || true)
-	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -o $@
+file-system-d:
+	cd ../file-system/ && $(MAKE) debug
 
-main-d: main.c simple-queue-d config-parser-d logger-d communication-d
+bin/main: main.c simple-queue config-parser logger communication file-system
 	(mkdir bin || true)
-	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -o $(TARGET)
+	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $@
+
+main-d: main.c simple-queue-d config-parser-d logger-d communication-d file-system-d
+	(mkdir bin || true)
+	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $(TARGET)
 
 clean:
 	rm -rf $(BUILDDIR)
 	rm -f ./log.txt
-	rm -f ./main
+	rm -f ./mysocket
 	cd ../simple-queue && make clean
 	cd ../config-parser && make clean
 	cd ../logger && make clean
 	cd ../communication && make clean
+	cd ../file-system && make clean

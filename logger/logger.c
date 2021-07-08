@@ -55,7 +55,7 @@ struct Logger
 Logger logger = NULL;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-int realloca(char **buf, size_t newsize)
+static int realloca(char **buf, size_t newsize)
 {
     int toRet = 0;
 
