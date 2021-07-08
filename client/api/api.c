@@ -63,7 +63,7 @@ int fd_skt = -1;
 static int doRequest(int request, ...);
 static int readLocalFile(const char *path, void **bufPtr, size_t *size);
 static char *absolutify(const char *path);
-static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen);
+static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, char *dirname);
 
 // ---------------- API ----------------
 
@@ -220,7 +220,7 @@ int openFile(const char *pathname, int flags)
           if (!error && emptyFile)
           {
             puts("the file was empty");
-            AINZ(writeLocalFile(filepath, filepathLen, NULL, 0), "write process in openFile to local disk has failed", ;)
+            AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
           }
           // otherwise, read its content
           if (!error && !emptyFile)
@@ -233,7 +233,7 @@ int openFile(const char *pathname, int flags)
             if (!error)
             {
               printf("%.*s\n", (int)dataLen, (char *)data);
-              AINZ(writeLocalFile(filepath, filepathLen, data, dataLen), "write process in openFile to local disk has failed", ;)
+              AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
             }
 
             if (data)
@@ -264,6 +264,8 @@ int readFile(const char *pathname, void **buf, size_t *size)
 {
   CHECK_FD
 
+  int error = 0;
+
   // check arguments
   AIN(pathname, "invalid pathname argument for readFile", errno = EINVAL; return -1;)
   AIN(buf, "invalid buf argument for readFile", errno = EINVAL; return -1;)
@@ -271,9 +273,56 @@ int readFile(const char *pathname, void **buf, size_t *size)
   char *absPath = absolutify(pathname);
   AIN(absPath, "readFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(READ_FILE, absPath), "readFile has failed", return -1;)
+  AINZ(doRequest(READ_FILE, absPath), "readFile has failed", error = 1;)
 
-  // TODO: gestire risposta
+  int resCode;
+  if (!error)
+  {
+    // read the result code
+    AINZ(getData(fd_skt, &resCode, 0, 0), "readFile has failed", error = 1;)
+    printf("remote readFile has received %d as result code\n", resCode);
+  }
+
+  if (!error && resCode == -1)
+  {
+    // read the error message
+    char *errMess;
+    size_t errMessLen;
+    AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "readFile has failed", error = 1;)
+
+    // print the error message
+    if (!error)
+    {
+      printf("%.*s\n", (int)errMessLen, errMess);
+    }
+
+    if (errMess)
+    {
+      free(errMess);
+    }
+
+    // because resCode == -1
+    error = 1;
+  }
+  else if (!error && resCode != -1)
+  {
+    // read if the file was empty
+    int emptyFile;
+    AINZ(getData(fd_skt, &emptyFile, 0, 0), "readFile has failed", error = 1;)
+
+    // if it was empty, write NULL
+    if (!error && emptyFile)
+    {
+      puts("the file was empty");
+      *size = 0;
+      *buf = NULL;
+    }
+    // otherwise, read its content
+    if (!error && !emptyFile)
+    {
+      AINZ(getData(fd_skt, buf, size, 1), "readFile has failed", error = 1;)
+    }
+  }
 
   free(absPath);
   return 0;
@@ -518,14 +567,13 @@ static char *absolutify(const char *path)
   return toRet;
 }
 
-// store a file using homeDirEvictedFiles as root, if it is not null
+// store a file using dirname as root, if it is not null
 // otherwise it has no effects
 // the path must be absolute
-static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen)
+static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, char *dirname)
 {
-  if (homeDirEvictedFiles)
+  if (dirname)
   {
-
     // arguments check
     AIN(path, "path argument of writeLocalFile is NULL", errno = EINVAL; return -1;)
     AIZ(pathLen, "pathLen argument of writeLocalFile is 0", errno = EINVAL; return -1;)
@@ -534,11 +582,11 @@ static int writeLocalFile(const char *path, size_t pathLen, const void *data, si
     // data == NULL || dataLen == 0 means that the file to write is empty
 
     // request enough space to concatenate the directory's path and the file's path
-    char *finalPath = calloc(strnlen(homeDirEvictedFiles, PATH_MAX) + pathLen + 1, sizeof(*finalPath));
+    char *finalPath = calloc(strnlen(dirname, PATH_MAX) + pathLen + 1, sizeof(*finalPath));
     AIN(finalPath, "writeLocalFile internal malloc error", return -1;)
 
     // concatenate those paths
-    sprintf(finalPath, "%s%s", homeDirEvictedFiles, path);
+    sprintf(finalPath, "%s%s", dirname, path);
 
     // now retrieve file's dirname
     char *slash = strrchr(finalPath, '/'); // it's the last one

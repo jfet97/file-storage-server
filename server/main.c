@@ -354,7 +354,7 @@ void *worker(void *args)
             else
             {
               char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "Requested OPEN_FILE operation. File %s of size %d with flags %d -", pathname, pathLen, flags);
+              sprintf(toLog, "Requested OPEN_FILE operation. File %.*s with flags %d -", (int)pathLen, pathname, flags);
               LOG(toLog);
 
               OwnerId id;
@@ -382,8 +382,11 @@ void *worker(void *args)
                   // and the evicted file, if any
                   int evicted = 1;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
+                  // send the file's path
                   AINZ(sendData(fd, rf->path, strlen(rf->path)), "cannot respond to a client", closeConnection = 1;)
 
+                  // send a message to say if the evicted file was empty or not
+                  // send the file's content if it is not empty
                   if (rf->size)
                   {
                     int emptyFile = 0;
@@ -417,8 +420,8 @@ void *worker(void *args)
         case READ_FILE:
         {
           char *pathname = NULL;
-          size_t pathnameSize;
-          if (getData(fd, &pathname, &pathnameSize, 1) != 0)
+          size_t pathLen;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
           {
             closeConnection = 1;
             if (pathname)
@@ -428,12 +431,52 @@ void *worker(void *args)
           }
           else
           {
-            puts("READ_FILE");
-            puts(pathname);
-            printf("path size %d\n", pathnameSize);
-            sendBackFileDescriptor = 1;
-            // TODO: integrare filesystem e rispondere a modo
-            // liberare il liberabile
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested READ_FILE operation. File %.*s -", (int)pathLen, pathname);
+            LOG(toLog);
+
+            OwnerId id;
+            id.id = fd;
+
+            ResultFile rf = FileSystem_readFile(fs, pathname, id, &error);
+            int resCode = 0;
+            if (error || rf == NULL)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              sendBackFileDescriptor = 1;
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send a message to say if the evicted file was empty or not
+              // send the file's content if it is not empty
+
+              if (rf->size)
+              {
+                int emptyFile = 0;
+                AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
+                AINZ(sendData(fd, rf->data, rf->size), "cannot respond to a client", closeConnection = 1;)
+              }
+              else
+              {
+                int emptyFile = 1;
+                AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
+              }
+
+              if (!closeConnection)
+              {
+                sendBackFileDescriptor = 1;
+              }
+              ResultFile_free(&rf, NULL);
+            }
           }
           break;
         }

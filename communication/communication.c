@@ -55,7 +55,7 @@ ssize_t writen(int fd, void *v_ptr, size_t n)
 // if alloc == 0, dest is considered the address where to write the read data
 // if alloc == 1, dest is considered the address of a pointer that must be setted to the address of the read data
 // readSize is used to return the size of the read data
-int getData(int fd, void *dest, size_t *readSize, int alloc)
+int getData(int fd, void *dest, size_t *sizePtr, int alloc)
 {
   size_t size = 0;
 
@@ -99,7 +99,7 @@ int getData(int fd, void *dest, size_t *readSize, int alloc)
   if (done)
   {
     // return the size as well
-    readSize ? *readSize = size : 0;
+    sizePtr ? *sizePtr = size : 0;
     return 0;
   }
 

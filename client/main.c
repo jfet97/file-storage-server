@@ -35,7 +35,7 @@ int main(int argc, char **argv)
   abstime.tv_sec = 10;
   abstime.tv_nsec = 0;
 
-  homeDirEvictedFiles = "./dirname";
+  homeDirEvictedFiles = "./bin/dirname";
 
   AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
@@ -46,7 +46,14 @@ int main(int argc, char **argv)
   AAINZ(openFile("./bin/test1.txt", 0), "openFile has failed")
   AAINZ(openFile("./bin/test1.txt", 1), "openFile has failed")
   AAINZ(openFile("./bin/test1.txt", 2), "openFile has failed")
-  // AAINZ(readFile(filepath, malloc(1), NULL), "readFile has failed")
+
+  char *buf = NULL;
+  size_t bufLen = 0;
+  AAINZ(readFile("./bin/test2.txt", (void**)&buf, &bufLen), "readFile has failed")
+  if (buf && bufLen)
+  {
+    printf("HO LEGGIUTO: %.*s\n", bufLen, buf);
+  }
   // AAINZ(writeFile(filepath, "DIRNAME"), "writeFile has failed")
   // AAINZ(appendToFile(filepath, "ciao ciao", strlen("ciao ciao"), "DIRNAME"), "appendToFile has failed")
 
