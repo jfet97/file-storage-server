@@ -1,2 +1,0 @@
-42 workers launched - Thu Jul  8 09:48:40 2021
-Received signal 20 - Thu Jul  8 09:48:45 2021

@@ -305,10 +305,13 @@ void *worker(void *args)
             // success
             operationHasBeenRead = 1;
           },
-          { 
+          {
             // whatever has appened that is not success
             // e.g. the client has closed the connection
-            perror("cannot read the request from the client");
+            if (errno)
+            {
+              perror("cannot read the request from the client");
+            }
             closeConnection = 1;
           })
 

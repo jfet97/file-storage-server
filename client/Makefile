@@ -25,10 +25,10 @@ api-d:
 	cd ./api/ && $(MAKE) debug
   
 main: main.c api
-	$(CC) $(CFLAGS) $^ -I ./api/ -L./api/ -lapi -o $@
+	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o $@
 
 main-d: main.c api-d
-	$(CC) $< $(CFLAGS) -I ./api/ -L./api/ -lapi -o main
+	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o main
 
 clean:
 	-rm -f $(TARGET)
