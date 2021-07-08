@@ -23,15 +23,13 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include "api.h"
+#include "communication.h"
 #include <stdarg.h>
 
 #define UNIX_PATH_MAX 108
 
 #define O_CREATE 0x01
 #define O_LOCK 0x02
-
-#define OPEN_FILE 10000
-#define READ_FILE 10001
 
 // will be fulfilled in openConnection
 char socketname[UNIX_PATH_MAX] = {0};
@@ -76,97 +74,6 @@ int fd_skt = -1;
     action                          \
   }
 
-#define HANDLE_WRN(A, S, OK, NE, IZ, IE, D) \
-  errno = 0;                                \
-  int r = A;                                \
-  if (r == S)                               \
-  {                                         \
-    OK                                      \
-  }                                         \
-  else if (r == 0)                          \
-  {                                         \
-    IZ                                      \
-  }                                         \
-  else if (r == -1)                         \
-  {                                         \
-    IE                                      \
-  }                                         \
-  else if (r < S)                           \
-  {                                         \
-    NE                                      \
-  }                                         \
-  else                                      \
-  {                                         \
-    D                                       \
-  }
-
-#define HANDLE_WRNS(A, S, OK, KO) \
-  HANDLE_WRN(A, S, OK, KO, KO, KO, KO)
-
-/* Read "n" bytes from a descriptor */
-static ssize_t readn(int fd, void *v_ptr, size_t n)
-{
-  char *ptr = v_ptr;
-  size_t nleft;
-  ssize_t nread;
-
-  nleft = n;
-  while (nleft > 0)
-  {
-    if ((nread = read(fd, ptr, nleft)) < 0)
-    {
-      if (nleft == n)
-        return -1; /* error, return -1 */
-      else
-        break; /* error, return amount read so far */
-    }
-    else if (nread == 0)
-    {
-      break; /* EOF */
-    }
-    nleft -= nread;
-    ptr += nread;
-  }
-  return (n - nleft); /* return >= 0 */
-}
-
-/* Write "n" bytes to a descriptor */
-static ssize_t writen(int fd, void *v_ptr, size_t n)
-{
-  char *ptr = v_ptr;
-  size_t nleft;
-  ssize_t nwritten;
-
-  nleft = n;
-  while (nleft > 0)
-  {
-    if ((nwritten = write(fd, ptr, nleft)) < 0)
-    {
-      if (nleft == n)
-        return -1; /* error, return -1 */
-      else
-        break; /* error, return amount written so far */
-    }
-    else if (nwritten == 0)
-      break;
-    nleft -= nwritten;
-    ptr += nwritten;
-  }
-  return (n - nleft); /* return >= 0 */
-}
-
-static int sendRequestType(int request)
-{
-  HANDLE_WRNS(writen(fd_skt, &request, sizeof(request)), sizeof(request), return 0;, return -1;)
-}
-
-static int sendData(void *data, size_t size)
-{
-  HANDLE_WRNS(writen(fd_skt, &size, sizeof(size)), sizeof(size),
-              HANDLE_WRNS(writen(fd_skt, data, size), size, return 0;, return -1;),
-              return -1;)
-}
-
 static int doRequest(int request, ...)
 {
 
@@ -184,9 +91,9 @@ static int doRequest(int request, ...)
     int flags = va_arg(valist, int);
     size_t pathLen = strlen(pathname) + 1; // null terminator included
 
-    AINZ(sendRequestType(OPEN_FILE), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(pathname, pathLen), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(&flags, sizeof(int)), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendRequestType(fd_skt, OPEN_FILE), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(fd_skt, pathname, pathLen), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(fd_skt, &flags, sizeof(int)), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
 
     break;
   }
@@ -195,8 +102,8 @@ static int doRequest(int request, ...)
     char *pathname = va_arg(valist, char *);
     size_t pathLen = strlen(pathname) + 1; // null terminator included
 
-    AINZ(sendRequestType(READ_FILE), "READ_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(pathname, pathLen), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendRequestType(fd_skt, READ_FILE), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(fd_skt, pathname, pathLen), "READ_FILE request failed", toRet = -1; toErrno = errno;)
 
     break;
   }
@@ -313,7 +220,8 @@ int openFile(const char *pathname, int flags)
 }
 
 // TODO: pathname must be absolute, supportare relativi
-int readFile(const char *pathname, void **buf, size_t *size) {
+int readFile(const char *pathname, void **buf, size_t *size)
+{
   CHECK_FD
 
   AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
@@ -331,6 +239,7 @@ int readFile(const char *pathname, void **buf, size_t *size) {
 
   return 0;
 }
+
 int writeFile(const char *pathname, const char *dirname);
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname);
 int lockFile(const char *pathname);

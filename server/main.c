@@ -25,6 +25,7 @@
 #include "simple_queue.h"
 #include "config-parser.h"
 #include "logger.h"
+#include "communication.h"
 
 #define NOOP ;
 
@@ -36,9 +37,6 @@
 #define RAGE_QUIT 2
 
 #define LOG_LEN 128
-
-#define OPEN_FILE 10000
-#define READ_FILE 10001
 
 // ABORT_ABRUPTLY_IF_NON_ZERO
 #define AAINZ(code, message) \
@@ -62,29 +60,6 @@
     puts(SimpleQueue_getErrorMessage(E)); \
     exit(EXIT_FAILURE);                   \
   }
-
-#define HANDLE_WRN(A, S, OK, IZ, IE, NE) \
-  errno = 0;                             \
-  int r = A;                             \
-  if (r == S)                            \
-  {                                      \
-    OK                                   \
-  }                                      \
-  else if (r == 0)                       \
-  {                                      \
-    IZ                                   \
-  }                                      \
-  else if (r == -1)                      \
-  {                                      \
-    IE                                   \
-  }                                      \
-  else if (r < S)                        \
-  {                                      \
-    NE                                   \
-  }
-
-#define HANDLE_WRNS(A, S, OK, KO) \
-  HANDLE_WRN(A, S, OK, KO, KO, KO)
 
 #define CLOSE(FD, S) \
   errno = 0;         \
@@ -113,58 +88,6 @@
       puts(Logger_getErrorMessage(e)); \
     }                                  \
   }
-
-/* Read "n" bytes from a descriptor */
-static ssize_t readn(int fd, void *v_ptr, size_t n)
-{
-  char *ptr = v_ptr;
-  size_t nleft;
-  ssize_t nread;
-
-  nleft = n;
-  while (nleft > 0)
-  {
-    if ((nread = read(fd, ptr, nleft)) < 0)
-    {
-      if (nleft == n)
-        return -1; /* error, return -1 */
-      else
-        break; /* error, return amount read so far */
-    }
-    else if (nread == 0)
-    {
-      break; /* EOF */
-    }
-    nleft -= nread;
-    ptr += nread;
-  }
-  return (n - nleft); /* return >= 0 */
-}
-
-/* Write "n" bytes to a descriptor */
-static ssize_t writen(int fd, void *v_ptr, size_t n)
-{
-  char *ptr = v_ptr;
-  size_t nleft;
-  ssize_t nwritten;
-
-  nleft = n;
-  while (nleft > 0)
-  {
-    if ((nwritten = write(fd, ptr, nleft)) < 0)
-    {
-      if (nleft == n)
-        return -1; /* error, return -1 */
-      else
-        break; /* error, return amount written so far */
-    }
-    else if (nwritten == 0)
-      break;
-    nleft -= nwritten;
-    ptr += nwritten;
-  }
-  return (n - nleft); /* return >= 0 */
-}
 
 typedef struct
 {
@@ -345,66 +268,6 @@ int setupServerSocket(char *sockname, int upm)
   return fd_skt;
 }
 
-// if alloc == 0, dest is considered the address where to write the read data
-// if alloc == 1, dest is considered the address of a pointer that must be setted to the address of the read data
-// readSize is used to return the size of the read data
-int getData(int fd, void *dest, size_t *readSize, int alloc)
-{
-  size_t size = 0;
-
-  // control flow flags
-  int sizeRead = 0;
-  int error = 0;
-  int done = 0;
-
-  // read the size
-  HANDLE_WRNS(readn(fd, &size, sizeof(size)), sizeof(size), sizeRead = 1;, error = 1;)
-
-  if (sizeRead)
-  {
-    // default behaviour: write to dest
-    void *writeTo = dest;
-
-    if (alloc)
-    {
-      // in this situation dest is considered as the address
-      // of a pointer that we have to set to the read data
-      char **destPtr = dest;
-
-      // malloc enough space
-      *destPtr = malloc(sizeof(**destPtr) * size);
-
-      // we have to write into the allocated space
-      writeTo = *destPtr;
-    }
-
-    // read the data if writeTo is not NULL
-    if (writeTo)
-    {
-      HANDLE_WRNS(readn(fd, writeTo, size), size, done = 1;, error = 1;)
-    }
-    else
-    {
-      error = 1;
-    }
-  }
-
-  if (done)
-  {
-    // return the size as well
-    readSize ? *readSize = size : 0;
-    return 0;
-  }
-
-  if (error)
-  {
-    perror("getData has failed");
-    return -1;
-  }
-
-  return -1;
-}
-
 void *worker(void *args)
 {
   WorkerContext *ctx = args;
@@ -435,23 +298,17 @@ void *worker(void *args)
 
       // read the operation
       int op = 0;
-      HANDLE_WRN(
+      HANDLE_WRNS(
           readn(fd, &op, sizeof(op)),
           sizeof(op),
           {
             // success
             operationHasBeenRead = 1;
           },
-          { // the client has closed the connection, free the resources related to it
-            // signal the event to the main thread
-            closeConnection = 1;
-          },
-          {
-            // if an error has occurred, try to close the connection
-            closeConnection = 1;
-            perror("Cannot receive data from a client, the connection will be closed");
-          },
-          { // if not enough characters were read, close the connection
+          { 
+            // whatever has appened that is not success
+            // e.g. the client has closed the connection
+            perror("cannot read the request from the client");
             closeConnection = 1;
           })
 

@@ -7,7 +7,7 @@ CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
 TARGET = main
 
 debug: CFLAGS += -g
-debug: clean all
+debug: clean d
 
 dist: CFLAGS += -O3
 dist: clean all
@@ -16,16 +16,23 @@ dist: clean all
 
 all: $(TARGET)
 
-libapi.a: api.o
-	ar rvs $@ $<
+d: main-d
 
-api.o: api.c api.h
+api:
+	cd ./api/ && $(MAKE) all
+
+api-d:
+	cd ./api/ && $(MAKE) debug
   
-main: main.c libapi.a
-	$(CC) $(CFLAGS) $^ -o $@
+main: main.c api
+	$(CC) $(CFLAGS) $^ -I ./api/ -L./api/ -lapi -o $@
+
+main-d: main.c api-d
+	$(CC) $< $(CFLAGS) -I ./api/ -L./api/ -lapi -o main
 
 clean:
 	-rm -f $(TARGET)
 	rm -f ./main
 	rm -f api.o
 	rm -f libapi.a
+	cd ./api && make clean
