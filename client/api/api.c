@@ -1,30 +1,6 @@
 #define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200112L
-#include <sys/syscall.h>
-#include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
-#include <string.h>
-#include <dirent.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <pthread.h>
-#include <semaphore.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <ctype.h>
-#include <poll.h>
-#include <dirent.h>
-#include <stddef.h>
-#include <sys/types.h>
 #include "api.h"
-#include "communication.h"
-#include <stdarg.h>
 
 #define UNIX_PATH_MAX 108
 
@@ -260,6 +236,10 @@ static char *absolutify(const char *path)
 
 // ---------------- API ----------------
 
+// if it will be provided, this variabile will contain the path of the dir
+// used to store the evicted files from the server
+char *homeDirEvictedFiles = NULL; 
+
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
 {
   // create the socket, stored globally
@@ -442,6 +422,8 @@ int openFile(const char *pathname, int flags)
       }
     }
   }
+
+  // TODO: salva client nella cartella ricorsivamente, considerando la cartella come home
 
   free(absPath);
   return 0;
