@@ -4,7 +4,8 @@
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
-TARGET = main
+TARGET = bin/main
+BUILDDIR = bin
 
 debug: CFLAGS += -g
 debug: clean d
@@ -42,14 +43,16 @@ logger-d:
 communication-d:
 	cd ../communication/ && $(MAKE) debug
 
-main: main.c simple-queue config-parser logger communication
+bin/main: main.c simple-queue config-parser logger communication
+	(mkdir bin || true)
 	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -o $@
 
 main-d: main.c simple-queue-d config-parser-d logger-d communication-d
-	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -o main
+	(mkdir bin || true)
+	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -o $(TARGET)
 
 clean:
-	rm -rf $(TARGET)
+	rm -rf $(BUILDDIR)
 	rm -f ./log.txt
 	rm -f ./main
 	cd ../simple-queue && make clean

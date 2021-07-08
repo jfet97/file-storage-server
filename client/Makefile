@@ -4,7 +4,8 @@
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
-TARGET = main
+TARGET = bin/main
+BUILDDIR = bin
 
 debug: CFLAGS += -g
 debug: clean d
@@ -24,14 +25,16 @@ api:
 api-d:
 	cd ./api/ && $(MAKE) debug
   
-main: main.c api
+bin/main: main.c api
+	(mkdir bin || true)
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o $@
 
 main-d: main.c api-d
-	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o main
+	(mkdir bin || true)
+	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o $(TARGET)
 
 clean:
-	-rm -f $(TARGET)
+	-rm -f $(BUILDDIR)
 	rm -f ./main
 	rm -f api.o
 	rm -f libapi.a
