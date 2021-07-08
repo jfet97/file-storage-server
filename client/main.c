@@ -30,18 +30,17 @@
 int main(int argc, char **argv)
 {
   char *sockname = "../server/mysocket"; // TODO da passare da linea di comando a modino
-
+  char *filepath = argv[1];
   struct timespec abstime;
   abstime.tv_sec = 10;
   abstime.tv_nsec = 0;
 
   AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
-
-  AAINZ(openFile("/test.txt", 2), "openFile has failed")
-  AAINZ(readFile("/test.txt", NULL, NULL), "readFile has failed")
-  AAINZ(writeFile("/home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/test2.txt", "DIRNAME"), "writeFile has failed")
-  AAINZ(appendToFile("/test.txt", "ciao ciao", strlen("ciao ciao"), "DIRNAME"), "appendToFile has failed")
+  AAINZ(openFile(filepath, 2), "openFile has failed")
+  AAINZ(readFile(filepath, malloc(1), NULL), "readFile has failed")
+  AAINZ(writeFile(filepath, "DIRNAME"), "writeFile has failed")
+  AAINZ(appendToFile(filepath, "ciao ciao", strlen("ciao ciao"), "DIRNAME"), "appendToFile has failed")
 
   AAINZ(closeConnection(sockname), "closeConnection has failed")
 }

@@ -31,10 +31,11 @@ bin/main: main.c api
 
 main-d: main.c api-d
 	(mkdir bin || true)
+	cd bin && touch test2.txt && echo "prova prova" >> test2.txt
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -o $(TARGET)
 
 clean:
-	-rm -f $(BUILDDIR)
+	-rm -rf $(BUILDDIR)
 	rm -f ./main
 	rm -f api.o
 	rm -f libapi.a

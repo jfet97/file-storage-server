@@ -74,6 +74,8 @@ int fd_skt = -1;
     action                          \
   }
 
+// ---------------- Internals ----------------
+
 static int doRequest(int request, ...)
 {
 
@@ -111,7 +113,7 @@ static int doRequest(int request, ...)
   case APPEND_TO_FILE:
   {
     char *pathname = va_arg(valist, char *);
-    size_t pathLen = strlen(pathname); // null terminator included
+    size_t pathLen = strlen(pathname);
     void *buf = va_arg(valist, void *);
     size_t size = va_arg(valist, size_t);
     int isWrite = va_arg(valist, int);
@@ -141,12 +143,12 @@ static int doRequest(int request, ...)
   return toRet;
 }
 
-int readLocalFile(const char *path, void **bufPtr, size_t *size)
+// read a file from disk, path should be absolute
+static int readLocalFile(const char *path, void **bufPtr, size_t *size)
 {
   AIN(path, "invalid path argument for readLocalFile", errno = EINVAL; return -1;)
   AIN(bufPtr, "invalid bufPtr argument for readLocalFile", errno = EINVAL; return -1;)
   AIN(size, "invalid size argument for readLocalFile", errno = EINVAL; return -1;)
-
   FILE *fptr = NULL;
   *bufPtr = NULL;
 
@@ -232,6 +234,30 @@ int readLocalFile(const char *path, void **bufPtr, size_t *size)
   }
 }
 
+// if path is a relative path, transform it into an absolute one
+static char *absolutify(const char *path)
+{
+  AIN(path, "path argument of absolutify is NULL", return NULL;)
+
+  char *toRet = malloc(sizeof(*toRet) * (PATH_MAX + 1));
+  AIN(toRet, "malloc has failed in absolutify", return NULL;)
+
+  // check if path is already absolute, in such a case clone it
+  if (path == strchr(path, '/'))
+  {
+    memcpy(toRet, path, strlen(path) + 1);
+  }
+  else
+  {
+    // append the current work directory
+    char cwd[PATH_MAX];
+    AIN(getcwd(cwd, sizeof(cwd)), "getcwd has failed in absolutify", free(toRet); toRet = NULL; return NULL;)
+    snprintf(toRet, PATH_MAX + 1, "%s/%s", cwd, path);
+  }
+
+  return toRet;
+}
+
 // ---------------- API ----------------
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
@@ -307,20 +333,12 @@ int closeConnection(const char *sockname)
 
 // O_CREATE | O_LOCK for using both
 // 0 for no flag
-// TODO: pathname must be absolute, supportare relativi
 int openFile(const char *pathname, int flags)
 {
   CHECK_FD
 
+  // check arguments
   AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
-
-  if (strchr(pathname, '/') != pathname)
-  {
-    puts("invalid pathname, it must be absolute");
-    errno = EINVAL;
-    return -1;
-  }
-
   if (flags < 0 || flags > 3)
   {
     puts("invalid flags");
@@ -328,53 +346,50 @@ int openFile(const char *pathname, int flags)
     return -1;
   }
 
-  AINZ(doRequest(OPEN_FILE, pathname, flags), "openFile has failed", return -1;)
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "openFile internal error", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(OPEN_FILE, absPath, flags), "openFile has failed", return -1;)
 
   // TODO: gestire risposta
 
+  free(absPath);
   return 0;
 }
 
-// TODO: pathname must be absolute, supportare relativi
 int readFile(const char *pathname, void **buf, size_t *size)
 {
   CHECK_FD
 
+  // check arguments
   AIN(pathname, "invalid pathname argument for readFile", errno = EINVAL; return -1;)
-  // TODO: AIN(buf, "invalid buf argument for readFile", errno = EINVAL; return -1;) obbligatorio?
+  AIN(buf, "invalid buf argument for readFile", errno = EINVAL; return -1;)
 
-  if (strchr(pathname, '/') != pathname)
-  {
-    puts("invalid pathname, it must be absolute");
-    errno = EINVAL;
-    return -1;
-  }
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "readFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(READ_FILE, pathname), "readFile has failed", return -1;)
+  AINZ(doRequest(READ_FILE, absPath), "readFile has failed", return -1;)
 
   // TODO: gestire risposta
 
+  free(absPath);
   return 0;
 }
 
-// TODO: pathname must be absolute, supportare relativi
 int writeFile(const char *pathname, const char *dirname)
 {
   CHECK_FD
 
+  // check arguments
   AIN(pathname, "invalid pathname argument for writeFile", errno = EINVAL; return -1;)
 
-  if (strchr(pathname, '/') != pathname)
-  {
-    puts("invalid pathname, it must be absolute");
-    errno = EINVAL;
-    return -1;
-  }
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "writeFile internal error", errno = EINVAL; return -1;)
 
   void *buf = NULL;
   size_t size = 0;
   AINZ(
-      readLocalFile(pathname, &buf, &size), "writeFile has failed - cannot read the file from local disk",
+      readLocalFile(absPath, &buf, &size), "writeFile has failed - cannot read the file from local disk",
       {
         if (buf)
         {
@@ -383,32 +398,30 @@ int writeFile(const char *pathname, const char *dirname)
         return -1;
       });
 
-  AINZ(doRequest(WRITE_FILE, pathname, buf, size, 1), "writeFile has failed", return -1;)
+  AINZ(doRequest(WRITE_FILE, absPath, buf, size, 1), "writeFile has failed", return -1;)
 
   // TODO: gestire risposta
 
+  free(absPath);
   return 0;
 }
 
-// TODO: pathname must be absolute, supportare relativi
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname)
 {
   CHECK_FD
 
+  // check arguments
   AIN(pathname, "invalid pathname argument for appendToFile", errno = EINVAL; return -1;)
   AIN(buf, "invalid buf argument for appendToFile", errno = EINVAL; return -1;)
 
-  if (strchr(pathname, '/') != pathname)
-  {
-    puts("invalid pathname, it must be absolute");
-    errno = EINVAL;
-    return -1;
-  }
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "appendToFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(APPEND_TO_FILE, pathname, buf, size, 0), "appendToFile has failed", return -1;)
+  AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size, 0), "appendToFile has failed", return -1;)
 
   // TODO: gestire risposta
 
+  free(absPath);
   return 0;
 }
 
