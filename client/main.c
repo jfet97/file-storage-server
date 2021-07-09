@@ -307,6 +307,12 @@ int main(int argc, char **argv)
 
     switch (op)
     {
+    case 'O':
+    {
+      // it can be null
+      homeDirEvictedFiles = (char *)param;
+      break;
+    }
     case 'D':
     {
       puts("wrong usage of option D");
@@ -371,7 +377,17 @@ int main(int argc, char **argv)
 
       if (!error)
       {
-        AAINZ(readNFilesFromDir(dirToRead, &n, readFiles), "internal error during the handling of option w", error = 1)
+        char cwd[PATH_MAX];
+        if (getcwd(cwd, sizeof(cwd)) != NULL)
+        {
+          AAINZ(readNFilesFromDir(dirToRead, &n, readFiles), "internal error during the handling of option w", error = 1)
+          AAINZ(chdir(cwd), "internal error during the handling of option w", error = 1)
+        }
+        else
+        {
+          perror("getcwd() error");
+          error = 1;
+        }
       }
 
       // check if -D was used as the next option
@@ -436,7 +452,7 @@ int main(int argc, char **argv)
         const char *token = strtok(paramClone, ",");
         while (token && !error)
         {
-          List_insertHead(readFiles, (void*)token, &error);
+          List_insertHead(readFiles, (void *)token, &error);
           if (error)
           {
             puts("internal error during the handling of option W");

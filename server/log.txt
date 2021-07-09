@@ -1,13 +1,25 @@
-42 workers launched - Fri Jul  9 22:12:33 2021
-New connection, 1 clients currently connected - Fri Jul  9 22:12:34 2021
-Request received from client (fd) 9 - Fri Jul  9 22:12:34 2021
-Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/./bin/read/test2.txt with flags 3 - Fri Jul  9 22:12:34 2021
-Request received from client (fd) 9 - Fri Jul  9 22:12:34 2021
-Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/./bin/read/test2.txt - Fri Jul  9 22:12:34 2021
-Request received from client (fd) 9 - Fri Jul  9 22:12:34 2021
-Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/./bin/read/test1.txt with flags 3 - Fri Jul  9 22:12:34 2021
-Request received from client (fd) 9 - Fri Jul  9 22:12:34 2021
-Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/./bin/read/test1.txt - Fri Jul  9 22:12:34 2021
-Request received from client (fd) 9 - Fri Jul  9 22:12:34 2021
-A client has disconnected, 0 clients currently connected - Fri Jul  9 22:12:34 2021
-Received signal 2 - Fri Jul  9 22:12:37 2021
+42 workers launched - Fri Jul  9 22:51:01 2021
+New connection, 1 clients currently connected - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test3.txt with flags 3 - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test3.txt - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test1.txt with flags 3 - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test1.txt - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/inner/test4.txt with flags 3 - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/inner/test4.txt - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/inner/test5.txt with flags 3 - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/inner/test5.txt - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested OPEN_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test2.txt with flags 3 - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+Requested WRITE_FILE operation from client 9. File /home/pi/Documents/UNIPI/SOL/file-storage-server/client/bin/read/test2.txt - Fri Jul  9 22:51:03 2021
+Request received from client (fd) 9 - Fri Jul  9 22:51:03 2021
+A client has disconnected, 0 clients currently connected - Fri Jul  9 22:51:03 2021
+Received signal 2 - Fri Jul  9 22:51:07 2021

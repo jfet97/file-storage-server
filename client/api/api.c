@@ -269,6 +269,7 @@ int openFile(const char *pathname, int flags)
             if (!error)
             {
               printf("%.*s\n", (int)dataLen, (char *)data);
+              puts(homeDirEvictedFiles);
               AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
             }
 
@@ -646,8 +647,6 @@ int removeFile(const char *pathname)
     return 0;
   }
 }
-
-
 
 // ---------------- Internals ----------------
 
