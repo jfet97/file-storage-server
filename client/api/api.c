@@ -60,10 +60,11 @@ int fd_skt = -1;
 
 #define MKDIR "mkdir -p"
 
-static int doRequest(int request, ...);
-static int readLocalFile(const char *path, void **bufPtr, size_t *size);
-static char *absolutify(const char *path);
-static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, char *dirname);
+static int doRequest(int, ...);
+static int readLocalFile(const char *, void **, size_t *);
+static char *absolutify(const char *);
+static int writeLocalFile(const char *, size_t, const void *, size_t, const char *);
+static int handleWriteAppendResponse(int, const char *);
 
 // ---------------- API ----------------
 
@@ -352,10 +353,9 @@ int writeFile(const char *pathname, const char *dirname)
 
   AINZ(doRequest(WRITE_FILE, absPath, buf, size, 1), "writeFile has failed", return -1;)
 
-  // TODO: gestire risposta
-
   free(absPath);
-  return 0;
+
+  return handleWriteAppendResponse(1, dirname);
 }
 
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname)
@@ -371,10 +371,8 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 
   AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size, 0), "appendToFile has failed", return -1;)
 
-  // TODO: gestire risposta
-
   free(absPath);
-  return 0;
+  return handleWriteAppendResponse(0, dirname);
 }
 
 int lockFile(const char *pathname);
@@ -570,7 +568,7 @@ static char *absolutify(const char *path)
 // store a file using dirname as root, if it is not null
 // otherwise it has no effects
 // the path must be absolute
-static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, char *dirname)
+static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, const char *dirname)
 {
   if (dirname)
   {
@@ -640,4 +638,101 @@ static int writeLocalFile(const char *path, size_t pathLen, const void *data, si
   }
 
   return 0;
+}
+
+// handle the response for WRITE_FILE and APPEND_TO_FILE requests
+static int handleWriteAppendResponse(int isWrite, const char *dirname)
+{
+
+  const char *op = isWrite ? "writeFile" : "appendToFile";
+  int error = 0;
+
+  int resCode;
+  if (!error)
+  {
+    // read the result code
+    AINZ(getData(fd_skt, &resCode, 0, 0), "handleWriteAppendResponse has failed", error = 1;)
+    printf("remote %s has received %d as result code\n", op, resCode);
+  }
+
+  if (!error && resCode == -1)
+  {
+    // read the error message
+    char *errMess;
+    size_t errMessLen;
+    AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+
+    // print the error message
+    if (!error)
+    {
+      printf("%.*s\n", (int)errMessLen, errMess);
+    }
+
+    if (errMess)
+    {
+      free(errMess);
+    }
+
+    // because resCode == -1
+    error = 1;
+  }
+  else if (!error && resCode != -1)
+  {
+    // read the number of evicted clients
+    int numOfEvictedFiles = 0;
+    AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleWriteAppendResponse has failed", error = 1;)
+
+    // get each evicted client and store it (if dirname is present)
+    for (int i = 0; i < numOfEvictedFiles && !error; i++)
+    {
+      // read the file path
+      char *filepath;
+      size_t filepathLen;
+      AINZ(getData(fd_skt, &filepath, &filepathLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+
+      if (!error)
+      {
+        printf("%.*s was evicted\n", (int)filepathLen, filepath);
+
+        // read if the file was empty
+        int emptyFile;
+        AINZ(getData(fd_skt, &emptyFile, 0, 0), "handleWriteAppendResponse has failed", error = 1;)
+
+        // if it was empty, write an empty file
+        if (!error && emptyFile)
+        {
+          puts("the file was empty");
+          AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, dirname), "write process in handleWriteAppendResponse to local disk has failed", ;)
+        }
+        // otherwise, read its content
+        if (!error && !emptyFile)
+        {
+          // read the file content
+          void *data;
+          size_t dataLen;
+          AINZ(getData(fd_skt, &data, &dataLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+
+          if (!error)
+          {
+            printf("%.*s\n", (int)dataLen, (char *)data);
+            AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, dirname), "write process in handleWriteAppendResponse to local disk has failed", ;)
+          }
+
+          if (data)
+          {
+            free(data);
+          }
+        }
+      }
+
+      if (filepath)
+      {
+        free(filepath);
+      }
+    }
+
+    return 0;
+  }
+
+  return -1;
 }

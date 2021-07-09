@@ -603,7 +603,7 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
         printf("Max number of file stored was: %d\n", fs->maxNumOfFilesReached);
         printf("Max Mbytes of space used was: %d\n", fs->maxByteOfStorageUsed / 1024);
         printf("Number of times the replacing algoritm has run was: %d\n", fs->numOfReplacementAlgoRuns);
-        puts("Follows a list of file still present in the file-system");
+        puts("Follows a list of files still present in the file-system");
         List_forEach(fs->filesList, printFile, NULL);
         puts("FILE-SYSTEM HAS ENDED...HAVE A NICE DAY!");
 

@@ -279,7 +279,7 @@ static int setupServerSocket(char *sockname, int upm)
   return fd_skt;
 }
 
-// callnack to send a list of evicted result files to a client
+// callback to send a list of evicted result files to a client
 void sendEvictedFilesCallback(void *rawFd, void *rawRF, int *error)
 {
   if (!(*error))

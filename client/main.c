@@ -27,6 +27,7 @@
     exit(EXIT_FAILURE);      \
   }
 
+#define BIG_TEXT "AAINZ(appendToFile(\"./ bin / test4.txt \", \" \", , homeDirEvictedFiles), \" openFile has failed \");"
 int main(int argc, char **argv)
 {
   char *sockname = "../server/mysocket"; // TODO da passare da linea di comando a modino
@@ -39,21 +40,37 @@ int main(int argc, char **argv)
 
   AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
-  AAINZ(openFile("./bin/test2.txt", 1), "openFile has failed")
-  AAINZ(openFile("./bin/test2.txt", 0), "openFile has failed")
-  AAINZ(openFile("./bin/test2.txt", 1), "openFile has failed")
-  AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed")
-  AAINZ(openFile("./bin/test1.txt", 0), "openFile has failed")
-  AAINZ(openFile("./bin/test1.txt", 1), "openFile has failed")
-  AAINZ(openFile("./bin/test1.txt", 2), "openFile has failed")
+  // ------------------------------------------------------------------------------
+  // AAINZ(openFile("./bin/test2.txt", 1), "openFile has failed")
+  // AAINZ(openFile("./bin/test2.txt", 0), "openFile has failed")
+  // AAINZ(openFile("./bin/test2.txt", 1), "openFile has failed")
+  // AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed")
+  // AAINZ(openFile("./bin/test1.txt", 0), "openFile has failed")
+  // AAINZ(openFile("./bin/test1.txt", 1), "openFile has failed")
+  // AAINZ(openFile("./bin/test1.txt", 2), "openFile has failed")
 
-  char *buf = NULL;
-  size_t bufLen = 0;
-  AAINZ(readFile("./bin/test2.txt", (void**)&buf, &bufLen), "readFile has failed")
-  if (buf && bufLen)
-  {
-    printf("HO LEGGIUTO: %.*s\n", bufLen, buf);
-  }
+  // char *buf = NULL;
+  // size_t bufLen = 0;
+  // AAINZ(readFile("./bin/test2.txt", (void**)&buf, &bufLen), "readFile has failed")
+  // if (buf && bufLen)
+  // {
+  //   printf("HO LEGGIUTO: %.*s\n", bufLen, buf);
+  // }
+  // ------------------------------------------------------------------------------
+
+  AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed")
+  AAINZ(openFile("./bin/test2.txt", 3), "openFile has failed")
+  AAINZ(openFile("./bin/test3.txt", 3), "openFile has failed")
+  AAINZ(writeFile("./bin/test1.txt", homeDirEvictedFiles), "writeFile has failed")
+  AAINZ(writeFile("./bin/test2.txt", homeDirEvictedFiles), "writeFile has failed")
+  AAINZ(writeFile("./bin/test3.txt", homeDirEvictedFiles), "writeFile has failed")
+  AAINZ(openFile("./bin/test4.txt", 3), "openFile has failed")
+  AAINZ(appendToFile("./bin/test4.txt", BIG_TEXT, strlen(BIG_TEXT), homeDirEvictedFiles), "openFile has failed")
+  AAINZ(openFile("./bin/test5.txt", 3), "openFile has failed")
+  AAINZ(writeFile("./bin/test5.txt", homeDirEvictedFiles), "writeFile has failed")
+
+  // ------------------------------------------------------------------------------
+
   // AAINZ(writeFile(filepath, "DIRNAME"), "writeFile has failed")
   // AAINZ(appendToFile(filepath, "ciao ciao", strlen("ciao ciao"), "DIRNAME"), "appendToFile has failed")
 
