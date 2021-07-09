@@ -24,7 +24,7 @@
   if (code != 0)             \
   {                          \
     perror(message);         \
-    exit(EXIT_FAILURE);      \
+    /* exit(EXIT_FAILURE);*/     \
   }
 
 // ABORT_ABRUPTLY_IF_NEGATIVE_ONE
@@ -32,7 +32,7 @@
   if (code == -1)            \
   {                          \
     perror(message);         \
-    exit(EXIT_FAILURE);      \
+    /* exit(EXIT_FAILURE);*/ \
   }
 
 #define BIG_TEXT "AAINZ(appendToFile(\"./ bin / test4.txt \", \" \", , homeDirEvictedFiles), \" openFile has failed \");"
@@ -68,22 +68,27 @@ int main(int argc, char **argv)
   // }
   // ------------------------------------------------------------------------------
 
-  AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed")
-  AAINZ(openFile("./bin/test2.txt", 3), "openFile has failed")
-  AAINZ(openFile("./bin/test3.txt", 3), "openFile has failed")
-  AAINZ(writeFile("./bin/test1.txt", homeDirEvictedFiles), "writeFile has failed")
-  AAINZ(writeFile("./bin/test2.txt", homeDirEvictedFiles), "writeFile has failed")
-  AAINZ(writeFile("./bin/test3.txt", homeDirEvictedFiles), "writeFile has failed")
-  AAINZ(openFile("./bin/test4.txt", 3), "openFile has failed")
-  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
-  AAINZ(appendToFile("./bin/test4.txt", BIG_TEXT, strlen(BIG_TEXT), homeDirEvictedFiles), "openFile has failed")
-  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
-  AAINZ(openFile("./bin/test5.txt", 3), "openFile has failed")
-  AAINZ(writeFile("./bin/test5.txt", homeDirEvictedFiles), "writeFile has failed")
-  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
+  // AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed")
+  // AAINZ(openFile("./bin/test2.txt", 3), "openFile has failed")
+  // AAINZ(openFile("./bin/test3.txt", 3), "openFile has failed")
+  // AAINZ(writeFile("./bin/test1.txt", homeDirEvictedFiles), "writeFile has failed")
+  // AAINZ(writeFile("./bin/test2.txt", homeDirEvictedFiles), "writeFile has failed")
+  // AAINZ(writeFile("./bin/test3.txt", homeDirEvictedFiles), "writeFile has failed")
+  // AAINZ(openFile("./bin/test4.txt", 3), "openFile has failed")
+  // AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
+  // AAINZ(appendToFile("./bin/test4.txt", BIG_TEXT, strlen(BIG_TEXT), homeDirEvictedFiles), "openFile has failed")
+  // AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
+  // AAINZ(openFile("./bin/test5.txt", 3), "openFile has failed")
+  // AAINZ(writeFile("./bin/test5.txt", homeDirEvictedFiles), "writeFile has failed")
+  // AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
 
-  
-  //
+  // ------------------------------------------------------------------------------
+
+  AAINZ(openFile("./bin/test1.txt", 1), "openFile has failed")
+  AAINZ(lockFile("./bin/test1.txt"), "lockFile has failed")
+  AAINZ(unlockFile("./bin/test1.txt"), "unlockFile has failed")
+  AAINZ(closeFile("./bin/test1.txt"), "closeFile has failed")
+
   // ------------------------------------------------------------------------------
 
   // AAINZ(writeFile(filepath, "DIRNAME"), "writeFile has failed")

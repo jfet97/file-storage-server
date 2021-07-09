@@ -644,6 +644,195 @@ static void *worker(void *args)
 
           break;
         }
+        case CLOSE_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathLen;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested CLOSE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            LOG(toLog);
+
+            FileSystem_closeFile(fs, pathname, id, &error);
+            int resCode = 0;
+            if (error)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send a message to say if the evicted file was empty or not
+              // send the file's content if it is not empty
+            }
+            free(pathname);
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
+          }
+          break;
+        }
+        case REMOVE_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathLen;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested REMOVE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            LOG(toLog);
+
+            FileSystem_removeFile(fs, pathname, id, &error);
+            int resCode = 0;
+            if (error)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send a message to say if the evicted file was empty or not
+              // send the file's content if it is not empty
+            }
+            free(pathname);
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
+          }
+          break;
+        }
+        case LOCK_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathLen;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested LOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            LOG(toLog);
+
+            FileSystem_lockFile(fs, pathname, id, &error);
+            int resCode = 0;
+            if (error)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send a message to say if the evicted file was empty or not
+              // send the file's content if it is not empty
+            }
+            free(pathname);
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
+          }
+          break;
+        }
+        case UNLOCK_FILE:
+        {
+          char *pathname = NULL;
+          size_t pathLen;
+          if (getData(fd, &pathname, &pathLen, 1) != 0)
+          {
+            closeConnection = 1;
+            if (pathname)
+            {
+              free(pathname);
+            }
+          }
+          else
+          {
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested UNLOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            LOG(toLog);
+
+            FileSystem_unlockFile(fs, pathname, id, &error);
+            int resCode = 0;
+            if (error)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send a message to say if the evicted file was empty or not
+              // send the file's content if it is not empty
+            }
+            free(pathname);
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
+          }
+          break;
+        }
+
         default:
         {
           closeConnection = 1;

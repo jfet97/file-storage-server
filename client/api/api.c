@@ -205,6 +205,7 @@ int openFile(const char *pathname, int flags)
 
       // because resCode == -1
       error = 1;
+      errno = EPERM;
     }
     else
     {
@@ -315,6 +316,7 @@ int readFile(const char *pathname, void **buf, size_t *size)
 
     // because resCode == -1
     error = 1;
+    errno = EPERM;
   }
   else if (!error && resCode != -1)
   {
@@ -410,7 +412,10 @@ int lockFile(const char *pathname)
   // check arguments
   AIN(pathname, "invalid pathname argument for lockFile", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(LOCK_FILE, pathname), "lockFile has failed", return -1;)
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "lockFile internal error", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(LOCK_FILE, absPath), "lockFile has failed", return -1;)
 
   // read the result code
   int resCode;
@@ -440,6 +445,7 @@ int lockFile(const char *pathname)
 
       // because resCode == -1
       error = 1;
+      errno = EPERM;
     }
   }
 
@@ -461,7 +467,10 @@ int unlockFile(const char *pathname)
   // check arguments
   AIN(pathname, "invalid pathname argument for unlockFile", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(UNLOCK_FILE, pathname), "unlockFile has failed", return -1;)
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "unlockFile internal error", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(UNLOCK_FILE, absPath), "unlockFile has failed", return -1;)
 
   // read the result code
   int resCode;
@@ -491,6 +500,7 @@ int unlockFile(const char *pathname)
 
       // because resCode == -1
       error = 1;
+      errno = EPERM;
     }
   }
 
@@ -512,7 +522,10 @@ int closeFile(const char *pathname)
   // check arguments
   AIN(pathname, "invalid pathname argument for closeFile", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(CLOSE_FILE, pathname), "closeFile has failed", return -1;)
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "closeFile internal error", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(CLOSE_FILE, absPath), "closeFile has failed", return -1;)
 
   // read the result code
   int resCode;
@@ -542,6 +555,7 @@ int closeFile(const char *pathname)
 
       // because resCode == -1
       error = 1;
+      errno = EPERM;
     }
   }
 
@@ -563,7 +577,10 @@ int removeFile(const char *pathname)
   // check arguments
   AIN(pathname, "invalid pathname argument for removeFile", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(REMOVE_FILE, pathname), "removeFile has failed", return -1;)
+  char *absPath = absolutify(pathname);
+  AIN(absPath, "closeFile internal error", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(REMOVE_FILE, absPath), "removeFile has failed", return -1;)
 
   // read the result code
   int resCode;
@@ -593,6 +610,7 @@ int removeFile(const char *pathname)
 
       // because resCode == -1
       error = 1;
+      errno = EPERM;
     }
   }
 
@@ -906,6 +924,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
 
     // because resCode == -1
     error = 1;
+    errno = EPERM;
   }
   else if (!error && resCode != -1)
   {
