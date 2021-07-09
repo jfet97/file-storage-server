@@ -8,7 +8,6 @@
 #define WAIT_OP "WAIT_OP"
 #define WAIT_PARAM "WAIT_PARAM"
 
-
 struct Arguments
 {
     Option *internal_list;
@@ -33,7 +32,36 @@ void Option_free(Option **optionPtr)
     *optionPtr = NULL;
 }
 
-int insert(Option **listPtr, Option *newNode)
+static void reverse(Option **nodePtr, Option* previous)
+{
+
+    if (*nodePtr == NULL)
+    {
+        // list with 0 elements
+        return;
+    }
+
+    if ((*nodePtr)->next == NULL)
+    {
+        if (previous != NULL)
+        {                                // list with more than one element
+            (*nodePtr)->next = previous; // rotate the next pointer of the last element
+        }
+        return; // note: here *nodePtr is already the address of the last element aka the new head
+    }
+
+    // *nodePtr: my address
+    // (*nodePtr)->next: address of the next element (before recursion)
+
+    reverse(&(*nodePtr)->next, *nodePtr);
+
+    // (*nodePtr)->next: address of the last element aka the new head (after recursion)
+    Option *self = *nodePtr;
+    *nodePtr = (*nodePtr)->next; // save the address of the new head inside the next field of my previous element or inside the head pointer
+    self->next = previous;       // rotate my next pointer with the address of my previous element
+}
+
+static int insert(Option **listPtr, Option *newNode)
 {
     int codeToRet = 0;
 
@@ -50,7 +78,7 @@ int insert(Option **listPtr, Option *newNode)
     return codeToRet;
 }
 
-void forceFree(Option **listPtr)
+static void forceFree(Option **listPtr)
 {
     if (listPtr && *listPtr)
     {
@@ -59,7 +87,7 @@ void forceFree(Option **listPtr)
     }
 }
 
-int isOpCountDashes(const char *str)
+static int isOpCountDashes(const char *str)
 {
     int dashCounter = 0;
 
@@ -192,10 +220,15 @@ Arguments CommandLineParser_parseArguments(char *argv[], int *error)
 
     if (errToSet)
     {
-        as ? forceFree(&(as->internal_list)) : NULL;
-        as ? free(as) : NULL;
-        option ? Option_free(&option) : NULL;
+        as ? forceFree(&(as->internal_list)) : (void)NULL;
+        as ? free(as) : (void)NULL;
+        option ? Option_free(&option) : (void)NULL;
         as = NULL;
+    }
+    else
+    {
+        // reverse the list
+        reverse(&(as->internal_list), NULL);
     }
 
     error && (*error = errToSet);
@@ -242,7 +275,7 @@ void CommandLineParser_printArguments(Arguments args, int *error)
 Option *CommandLineParser_getArguments(Arguments args, int *error)
 {
     int errToSet = 0;
-    Option* toRet = NULL;
+    Option *toRet = NULL;
 
     if (args == NULL)
     {

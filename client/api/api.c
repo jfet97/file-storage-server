@@ -73,15 +73,38 @@ int fd_skt = -1;
 
 static int doRequest(int, ...);
 static int readLocalFile(const char *, void **, size_t *);
-static char *absolutify(const char *);
 static int writeLocalFile(const char *, size_t, const void *, size_t, const char *);
 static int handleFilesResponse(const char *, const char *);
 
 // ---------------- API ----------------
 
 // if it will be provided, this variabile will contain the path of the dir
-// used to store the evicted file from the server when openFile is called
+// used to store the evicted file from the server when openFile is called (set using -O option)
 char *homeDirEvictedFiles = NULL;
+
+// if path is a relative path, transform it into an absolute one
+char *absolutify(const char *path)
+{
+  AIN(path, "path argument of absolutify is NULL", return NULL;)
+
+  char *toRet = calloc(PATH_MAX + 1, sizeof(*toRet));
+  AIN(toRet, "malloc has failed in absolutify", return NULL;)
+
+  // check if path is already absolute, in such a case clone it
+  if (path == strchr(path, '/'))
+  {
+    memcpy(toRet, path, strlen(path) + 1);
+  }
+  else
+  {
+    // append the current work directory
+    char cwd[PATH_MAX];
+    AIN(getcwd(cwd, sizeof(cwd)), "getcwd has failed in absolutify", free(toRet); toRet = NULL; return NULL;)
+    snprintf(toRet, PATH_MAX + 1, "%s/%s", cwd, path);
+  }
+
+  return toRet;
+}
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
 {
@@ -624,6 +647,8 @@ int removeFile(const char *pathname)
   }
 }
 
+
+
 // ---------------- Internals ----------------
 
 static int doRequest(int request, ...)
@@ -789,30 +814,6 @@ static int readLocalFile(const char *path, void **bufPtr, size_t *size)
   {
     return 0;
   }
-}
-
-// if path is a relative path, transform it into an absolute one
-static char *absolutify(const char *path)
-{
-  AIN(path, "path argument of absolutify is NULL", return NULL;)
-
-  char *toRet = calloc(PATH_MAX + 1, sizeof(*toRet));
-  AIN(toRet, "malloc has failed in absolutify", return NULL;)
-
-  // check if path is already absolute, in such a case clone it
-  if (path == strchr(path, '/'))
-  {
-    memcpy(toRet, path, strlen(path) + 1);
-  }
-  else
-  {
-    // append the current work directory
-    char cwd[PATH_MAX];
-    AIN(getcwd(cwd, sizeof(cwd)), "getcwd has failed in absolutify", free(toRet); toRet = NULL; return NULL;)
-    snprintf(toRet, PATH_MAX + 1, "%s/%s", cwd, path);
-  }
-
-  return toRet;
 }
 
 // store a file using dirname as root, if it is not null

@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <pthread.h>
-#include <semaphore.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <ctype.h>

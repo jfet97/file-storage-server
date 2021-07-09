@@ -1196,6 +1196,8 @@ void List_forEach(T list, ForEachCallback callback, int *error)
             runner = !errToSet ? runner->next : NULL;
         }
     }
+
+    SET_ERROR
 }
 
 void List_forEachWithContext(T list, ForEachCallbackWithContext callback, void* context, int *error)
@@ -1220,6 +1222,8 @@ void List_forEachWithContext(T list, ForEachCallbackWithContext callback, void* 
             runner = !errToSet ? runner->next : NULL;
         }
     }
+
+    SET_ERROR
 }
 
 void List_forEach_right(T list, ForEachCallback callback, int *error)
@@ -1244,6 +1248,8 @@ void List_forEach_right(T list, ForEachCallback callback, int *error)
             runner = !errToSet ? runner->prev : NULL;
         }
     }
+
+    SET_ERROR
 }
 
 const char *list_error_messages[] = {

@@ -3,7 +3,7 @@
 # make dist -> compile with compiler optimizations
 # make clean -> remove the binaries
 
-CFLAGS += -std=c99 -Wall -pedantic
+CFLAGS += -std=c99 -Wall -pedantic -Wno-unused-value
 TARGET = libcommand-line-parser.a command-line-parser.o
 
 debug: CFLAGS += -g
