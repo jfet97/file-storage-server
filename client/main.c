@@ -88,6 +88,12 @@ int main(int argc, char **argv)
   AAINZ(lockFile("./bin/test1.txt"), "lockFile has failed")
   AAINZ(unlockFile("./bin/test1.txt"), "unlockFile has failed")
   AAINZ(closeFile("./bin/test1.txt"), "closeFile has failed")
+  AAINZ(removeFile("./bin/test1.txt"), "removeFile has failed") // fail
+  AAINZ(openFile("./bin/test1.txt", 1), "openFile has failed") // fail
+  AAINZ(openFile("./bin/test1.txt", 2), "openFile has failed")
+  AAINZ(openFile("./bin/test1.txt", 3), "openFile has failed") // fail
+  AAINZ(openFile("./bin/test1.txt", 0), "openFile has failed") // fail
+  AAINZ(removeFile("./bin/test1.txt"), "removeFile has failed")
 
   // ------------------------------------------------------------------------------
 
