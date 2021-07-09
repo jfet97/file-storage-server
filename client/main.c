@@ -149,8 +149,70 @@ static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   }
 }
 
+static void lockOptionCallback(void *rawFilePath, int *error)
+{
+  if (*error)
+  {
+    return;
+  }
+
+  char *file = rawFilePath;
+
+  errno = 0;
+
+  // try to lock the file
+  lockFile(file);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+static void unlockOptionCallback(void *rawFilePath, int *error)
+{
+  if (*error)
+  {
+    return;
+  }
+
+  char *file = rawFilePath;
+
+  errno = 0;
+
+  // try to unlock the file
+  unlockFile(file);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+static void removeOptionCallback(void *rawFilePath, int *error)
+{
+  if (*error)
+  {
+    return;
+  }
+
+  char *file = rawFilePath;
+
+  errno = 0;
+
+  // try to remove the file
+  removeFile(file);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+
 // read *nPtr files recursively from a directory
-static int readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
+static int
+readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
 {
 
   AAIN(readFiles, "readFiles is NULL in readNFilesFromDir", return -1;)
@@ -533,8 +595,8 @@ int main(int argc, char **argv)
         List_forEachWithContext(readFiles, writeOptionCallback, (void *)paramD, &error);
       }
 
-      List_free(&readFiles, 0, NULL);
-      free(paramClone);
+      readFiles ? List_free(&readFiles, 0, NULL) : (void)NULL;
+      paramClone ? paramClone : NULL;
 
       if (error && error != EPERM)
       {
@@ -571,7 +633,7 @@ int main(int argc, char **argv)
           List_insertHead(toReadFiles, (void *)token, &error);
           if (error)
           {
-            puts("internal error during the handling of option W");
+            puts("internal error during the handling of option r");
           }
           else
           {
@@ -607,8 +669,8 @@ int main(int argc, char **argv)
         List_forEachWithContext(toReadFiles, readOptionCallback, (void *)paramD, &error);
       }
 
-      List_free(&toReadFiles, 0, NULL);
-      free(paramClone);
+      toReadFiles ? List_free(&toReadFiles, 0, NULL) : (void)NULL;
+      paramClone ? paramClone : NULL;
 
       if (error && error != EPERM)
       {
@@ -645,9 +707,167 @@ int main(int argc, char **argv)
       if (r < 0)
       {
         perror("something has gone wrong during handling of option R");
-      } else {
+      }
+      else
+      {
         printf("%d files has been read\n", r);
       }
+
+      break;
+    }
+    case 'l':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option l");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option l", stop = 1; error = 1; break;)
+
+      // will contains files to lock using option l
+      List_T toLockFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(toLockFiles, "internal error during the handling of option l", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toLockFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option l");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        List_forEach(toLockFiles, lockOptionCallback, &error);
+      };
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      toLockFiles ? List_free(&toLockFiles, 0, NULL) : (void)NULL;
+      paramClone ? paramClone : NULL;
+
+      break;
+    }
+    case 'u':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option u");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option u", stop = 1; error = 1; break;)
+
+      // will contains files to unnock using option u
+      List_T toUnlockFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(toUnlockFiles, "internal error during the handling of option u", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toUnlockFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option u");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        List_forEach(toUnlockFiles, unlockOptionCallback, &error);
+      };
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      toUnlockFiles ? List_free(&toUnlockFiles, 0, NULL) : (void)NULL;
+      paramClone ? paramClone : NULL;
+
+      break;
+    }
+    case 'c':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option c");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option c", stop = 1; error = 1; break;)
+
+      // will contains files to remove using option c
+      List_T toRemoveFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(toRemoveFiles, "internal error during the handling of option c", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toRemoveFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option c");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        List_forEach(toRemoveFiles, removeOptionCallback, &error);
+      };
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      toRemoveFiles ? List_free(&toRemoveFiles, 0, NULL) : (void)NULL;
+      paramClone ? paramClone : NULL;
 
       break;
     }
