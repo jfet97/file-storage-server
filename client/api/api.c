@@ -34,6 +34,17 @@ int fd_skt = -1;
     action                          \
   }
 
+// ABORT_IF_NON_ZERO_CONDITION
+#define AINZC(condition, code, message, action) \
+  if (condition)                                \
+  {                                             \
+    if (code != 0)                              \
+    {                                           \
+      perror(message);                          \
+      action                                    \
+    }                                           \
+  }
+
 // ABORT_IF_ZERO
 #define AIZ(code, message, action) \
   if (code == 0)                   \
@@ -351,7 +362,7 @@ int writeFile(const char *pathname, const char *dirname)
         return -1;
       });
 
-  AINZ(doRequest(WRITE_FILE, absPath, buf, size, 1), "writeFile has failed", return -1;)
+  AINZ(doRequest(WRITE_FILE, absPath, buf, size), "writeFile has failed", return -1;)
 
   free(absPath);
 
@@ -371,7 +382,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
   char *absPath = absolutify(pathname);
   AIN(absPath, "appendToFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size, 0), "appendToFile has failed", return -1;)
+  AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size), "appendToFile has failed", return -1;)
 
   free(absPath);
   int numOfFilesHandled = handleFilesResponse("appendToFile", dirname);
@@ -391,10 +402,209 @@ int readNFiles(int N, const char *dirname)
   return handleFilesResponse("readNFiles", dirname);
 }
 
-int lockFile(const char *pathname);
-int unlockFile(const char *pathname);
-int closeFile(const char *pathname);
-int removeFile(const char *pathname);
+int lockFile(const char *pathname)
+{
+  CHECK_FD
+  int error = 0;
+
+  // check arguments
+  AIN(pathname, "invalid pathname argument for lockFile", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(LOCK_FILE, pathname), "lockFile has failed", return -1;)
+
+  // read the result code
+  int resCode;
+  AINZ(getData(fd_skt, &resCode, 0, 0), "lockFile has failed", error = 1;)
+
+  if (!error)
+  {
+    printf("remote lockFile has received %d as result code\n", resCode);
+
+    if (resCode == -1)
+    {
+      // read the error message
+      char *errMess;
+      size_t errMessLen;
+      AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "lockFile has failed", error = 1;)
+
+      // print the error message
+      if (!error)
+      {
+        printf("%.*s\n", (int)errMessLen, errMess);
+      }
+
+      if (errMess)
+      {
+        free(errMess);
+      }
+
+      // because resCode == -1
+      error = 1;
+    }
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+int unlockFile(const char *pathname)
+{
+  CHECK_FD
+  int error = 0;
+
+  // check arguments
+  AIN(pathname, "invalid pathname argument for unlockFile", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(UNLOCK_FILE, pathname), "unlockFile has failed", return -1;)
+
+  // read the result code
+  int resCode;
+  AINZ(getData(fd_skt, &resCode, 0, 0), "unlockFile has failed", error = 1;)
+
+  if (!error)
+  {
+    printf("remote unlockFile has received %d as result code\n", resCode);
+
+    if (resCode == -1)
+    {
+      // read the error message
+      char *errMess;
+      size_t errMessLen;
+      AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "unlockFile has failed", error = 1;)
+
+      // print the error message
+      if (!error)
+      {
+        printf("%.*s\n", (int)errMessLen, errMess);
+      }
+
+      if (errMess)
+      {
+        free(errMess);
+      }
+
+      // because resCode == -1
+      error = 1;
+    }
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+int closeFile(const char *pathname)
+{
+  CHECK_FD
+  int error = 0;
+
+  // check arguments
+  AIN(pathname, "invalid pathname argument for closeFile", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(CLOSE_FILE, pathname), "closeFile has failed", return -1;)
+
+  // read the result code
+  int resCode;
+  AINZ(getData(fd_skt, &resCode, 0, 0), "closeFile has failed", error = 1;)
+
+  if (!error)
+  {
+    printf("remote closeFile has received %d as result code\n", resCode);
+
+    if (resCode == -1)
+    {
+      // read the error message
+      char *errMess;
+      size_t errMessLen;
+      AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "closeFile has failed", error = 1;)
+
+      // print the error message
+      if (!error)
+      {
+        printf("%.*s\n", (int)errMessLen, errMess);
+      }
+
+      if (errMess)
+      {
+        free(errMess);
+      }
+
+      // because resCode == -1
+      error = 1;
+    }
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
+}
+
+int removeFile(const char *pathname)
+{
+  CHECK_FD
+  int error = 0;
+
+  // check arguments
+  AIN(pathname, "invalid pathname argument for removeFile", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(REMOVE_FILE, pathname), "removeFile has failed", return -1;)
+
+  // read the result code
+  int resCode;
+  AINZ(getData(fd_skt, &resCode, 0, 0), "removeFile has failed", error = 1;)
+
+  if (!error)
+  {
+    printf("remote removeFile has received %d as result code\n", resCode);
+
+    if (resCode == -1)
+    {
+      // read the error message
+      char *errMess;
+      size_t errMessLen;
+      AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "removeFile has failed", error = 1;)
+
+      // print the error message
+      if (!error)
+      {
+        printf("%.*s\n", (int)errMessLen, errMess);
+      }
+
+      if (errMess)
+      {
+        free(errMess);
+      }
+
+      // because resCode == -1
+      error = 1;
+    }
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
+}
 
 // ---------------- Internals ----------------
 
@@ -415,19 +625,9 @@ static int doRequest(int request, ...)
     int flags = va_arg(valist, int);
     size_t pathLen = strlen(pathname);
 
-    AINZ(sendRequestType(fd_skt, OPEN_FILE), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(fd_skt, pathname, pathLen), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(fd_skt, &flags, sizeof(int)), "OPEN_FILE request failed", toRet = -1; toErrno = errno;)
-
-    break;
-  }
-  case READ_FILE:
-  {
-    char *pathname = va_arg(valist, char *);
-    size_t pathLen = strlen(pathname);
-
-    AINZ(sendRequestType(fd_skt, READ_FILE), "READ_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(fd_skt, pathname, pathLen), "READ_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, pathname, pathLen), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, &flags, sizeof(int)), "request failed", toRet = -1; toErrno = errno;)
 
     break;
   }
@@ -438,33 +638,43 @@ static int doRequest(int request, ...)
     size_t pathLen = strlen(pathname);
     void *buf = va_arg(valist, void *);
     size_t size = va_arg(valist, size_t);
-    int isWrite = va_arg(valist, int);
 
-    if (isWrite)
-    {
-      AINZ(sendRequestType(fd_skt, WRITE_FILE), "WRITE_FILE request failed", toRet = -1; toErrno = errno;)
-    }
-    else
-    {
-      AINZ(sendRequestType(fd_skt, APPEND_TO_FILE), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
-    }
-
-    AINZ(sendData(fd_skt, pathname, pathLen), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(fd_skt, buf, size), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, pathname, pathLen), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, buf, size), "request failed", toRet = -1; toErrno = errno;)
 
     break;
   }
   case READ_N_FILES:
   {
     int N = va_arg(valist, int);
-    AINZ(sendRequestType(fd_skt, READ_N_FILES), "READ_N_FILES request failed", toRet = -1; toErrno = errno;)
-    AINZ(sendData(fd_skt, &N, sizeof(N)), "READ_N_FILES request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, &N, sizeof(N)), "request failed", toRet = -1; toErrno = errno;)
+    break;
+  }
+  case READ_FILE:
+  case LOCK_FILE:
+  case UNLOCK_FILE:
+  case CLOSE_FILE:
+  case REMOVE_FILE:
+  {
+    char *pathname = va_arg(valist, char *);
+    size_t pathLen = strlen(pathname);
+
+    AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
+    AINZC(!toErrno, sendData(fd_skt, pathname, pathLen), "request failed", toRet = -1; toErrno = errno;)
+
     break;
   }
   default:
   {
     break;
   }
+  }
+
+  if (toErrno)
+  {
+    printf("the request that has failed is %s\n", fromRequestToString(request));
   }
 
   va_end(valist);

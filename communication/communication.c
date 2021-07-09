@@ -120,6 +120,33 @@ int sendRequestType(int fd, int request)
 int sendData(int fd, const void *data, size_t size)
 {
   HANDLE_WRNS(writen(fd, &size, sizeof(size)), sizeof(size),
-              HANDLE_WRNS(writen(fd, (void*)data, size), size, return 0;, return -1;),
+              HANDLE_WRNS(writen(fd, (void *)data, size), size, return 0;, return -1;),
               return -1;)
+}
+
+const char *fromRequestToString(int request)
+{
+  switch (request)
+  {
+  case OPEN_FILE:
+    return "OPEN_FILE";
+  case READ_FILE:
+    return "READ_FILE";
+  case WRITE_FILE:
+    return "WRITE_FILE";
+  case APPEND_TO_FILE:
+    return "APPEND_TO_FILE";
+  case READ_N_FILES:
+    return "READ_N_FILES";
+  case CLOSE_FILE:
+    return "CLOSE_FILE";
+  case REMOVE_FILE:
+    return "REMOVE_FILE";
+  case LOCK_FILE:
+    return "LOCK_FILE";
+  case UNLOCK_FILE:
+    return "UNLOCK_FILE";
+  default:
+    return "";
+  }
 }
