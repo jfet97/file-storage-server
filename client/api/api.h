@@ -28,7 +28,11 @@
 
 extern char *homeDirEvictedFiles;
 
+// make a relative path absolute (using cwd)
 char *absolutify(const char *path);
+// write a file on disk
+int writeLocalFile(const char *path, const void *data, size_t dataLen, const char *dirname);
+
 int openConnection(const char *sockname, int msec, const struct timespec abstime);
 int closeConnection(const char *sockname);
 int openFile(const char *pathname, int flags);

@@ -80,11 +80,9 @@ static void writeOptionCallback(void *rawDirname, void *rawFilePath, int *error)
     return;
   }
 
-  // convert nack to NULL if the rawDirname is an empty string
+  // convert back to NULL if the rawDirname is an empty string
   char *dirname = strcmp(rawDirname, "") == 0 ? NULL : rawDirname;
   char *file = rawFilePath;
-
-  puts(file);
 
   errno = 0;
   // try to open the file with both flags
@@ -102,13 +100,57 @@ static void writeOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   }
   else
   {
-    *error = errno;
+    if (errno != EPERM)
+    {
+      *error = errno;
+    }
+  }
+}
+// used to read a list of files
+static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
+{
+
+  if (*error)
+  {
+    return;
+  }
+
+  // convert back to NULL if the rawDirname is an empty string
+  char *dirname = strcmp(rawDirname, "") == 0 ? NULL : rawDirname;
+  char *file = rawFilePath;
+
+  errno = 0;
+  // try to read the file
+  void *buf = NULL;
+  size_t size;
+  readFile(file, &buf, &size);
+  puts(file);
+
+  // if the operation has ended successfully
+  if (errno == 0)
+  {
+    // write the file on disk if dirname is not NULL
+    if (dirname)
+    {
+      writeLocalFile(file, buf, size, dirname);
+    }
+  }
+  else
+  {
+    if (errno != EPERM)
+    {
+      *error = errno;
+    }
+  }
+
+  if (buf)
+  {
+    free(buf);
   }
 }
 
 // read *nPtr files recursively from a directory
-static int
-readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
+static int readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
 {
 
   AAIN(readFiles, "readFiles is NULL in readNFilesFromDir", return -1;)
@@ -420,7 +462,7 @@ int main(int argc, char **argv)
       readFiles ? List_free(&readFiles, 0, NULL) : (void)NULL;
       paramClone ? paramClone : NULL;
 
-      if (error)
+      if (error && error != EPERM)
       {
         stop = 1;
       }
@@ -494,7 +536,81 @@ int main(int argc, char **argv)
       List_free(&readFiles, 0, NULL);
       free(paramClone);
 
-      if (error)
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      break;
+    }
+    case 'r':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option r");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option r", stop = 1; error = 1; break;)
+
+      // will contains files to read using option r
+      List_T toReadFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(toReadFiles, "internal error during the handling of option r", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths to read
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toReadFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option W");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      // check if -d was used as the next option
+      const char *paramD = NULL;
+      if (!error)
+      {
+        if (p->next && p->next->op == 'd')
+        {
+          // skip it in the next iteration
+          p = p->next;
+          // retrieve the dirname where to store the read files
+          paramD = p->param;
+          if (paramD == NULL)
+          {
+            // it's not a big trouble, we can go on
+            puts("Wrong usage of -d option: the argument is missing");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        if (paramD == NULL)
+        {
+          paramD = ""; // forEach needs a non NULL context
+        }
+        List_forEachWithContext(toReadFiles, readOptionCallback, (void *)paramD, &error);
+      }
+
+      List_free(&toReadFiles, 0, NULL);
+      free(paramClone);
+
+      if (error && error != EPERM)
       {
         stop = 1;
       }

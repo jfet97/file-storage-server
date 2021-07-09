@@ -43,13 +43,13 @@ bin/main: main.c api clp list
 
 main-d: main.c api-d clp-d list-d
 	(mkdir bin || true)
-	((cd bin && mkdir read) || true)
-	((cd bin && cd read && mkdir inner) || true)
-	cd bin && cd read && touch test1.txt && echo "prova1 prova1" >> test1.txt
-	cd bin && cd read && touch test2.txt && echo "prova2 prova2" >> test2.txt
-	cd bin && cd read && touch test3.txt && echo "prova3 prova3" >> test3.txt
-	cd bin && cd read && cd inner && touch test4.txt && echo "prova4 prova4" >> test4.txt
-	cd bin && cd read && cd inner && touch test5.txt && echo "prova5 prova5" >> test5.txt
+	((cd bin && mkdir source) || true)
+	((cd bin && cd source && mkdir inner) || true)
+	cd bin && cd source && touch test1.txt && echo "prova1 prova1" >> test1.txt
+	cd bin && cd source && touch test2.txt && echo "prova2 prova2" >> test2.txt
+	cd bin && cd source && touch test3.txt && echo "prova3 prova3" >> test3.txt
+	cd bin && cd source && cd inner && touch test4.txt && echo "prova4 prova4" >> test4.txt
+	cd bin && cd source && cd inner && touch test5.txt && echo "prova5 prova5" >> test5.txt
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser -I ../list/ -L../list/ -llist -o $(TARGET)
 
 clean:

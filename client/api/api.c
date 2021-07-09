@@ -73,7 +73,6 @@ int fd_skt = -1;
 
 static int doRequest(int, ...);
 static int readLocalFile(const char *, void **, size_t *);
-static int writeLocalFile(const char *, size_t, const void *, size_t, const char *);
 static int handleFilesResponse(const char *, const char *);
 
 // ---------------- API ----------------
@@ -81,6 +80,82 @@ static int handleFilesResponse(const char *, const char *);
 // if it will be provided, this variabile will contain the path of the dir
 // used to store the evicted file from the server when openFile is called (set using -O option)
 char *homeDirEvictedFiles = NULL;
+
+// store a file using dirname as root, if it is not null
+// otherwise it has no effects
+// the path must be absolute
+int writeLocalFile(const char *path, const void *data, size_t dataLen, const char *dirname)
+{
+  if (dirname)
+  {
+    // arguments check
+    AIN(path, "path argument of writeLocalFile is NULL", errno = EINVAL; return -1;)
+
+    char *absFile = absolutify(path);
+    AIN(absFile, "writeLocalFile internal error", return -1;)
+
+    // data == NULL || dataLen == 0 means that the file to write is empty
+
+    // request enough space to concatenate the directory's path and the file's path
+    char *finalPath = calloc(strnlen(dirname, PATH_MAX) + strlen(absFile) + 2, sizeof(*finalPath));
+    AIN(finalPath, "writeLocalFile internal malloc error", return -1;)
+
+    // concatenate those paths
+    sprintf(finalPath, "%s%s", dirname, path);
+
+    // now retrieve file's dirname
+    char *slash = strrchr(finalPath, '/'); // it's the last one
+    char fileNameFirstChar = slash[1];     // the file's name + its extension starts after the last slash, store its first letter
+    slash[1] = '\0';                       // temporally hide the file's name
+    char *dirname = strdup(finalPath);
+    AIN(dirname, "writeLocalFile internal strdup error", free(finalPath); return -1;)
+    slash[1] = fileNameFirstChar; // restore the first file's char
+
+    // create file's dirname recursively
+    char *createDirsShellCommand = calloc(strlen(MKDIR) + strlen(dirname) + 2, sizeof(*createDirsShellCommand));
+    AIN(createDirsShellCommand, "writeLocalFile internal malloc error", free(dirname); free(finalPath); return -1;)
+    sprintf(createDirsShellCommand, "%s %s", MKDIR, dirname);
+    errno = 0;
+    system(createDirsShellCommand);
+    if (errno)
+    {
+      perror("writeLocalFile internal error");
+    }
+
+    // open the file to write the content
+    // but only if there is data to write
+    FILE *file;
+    if (!errno)
+    {
+      file = fopen(finalPath, "w+");
+      AIN(file, "writeLocalFile internal file error", ;)
+    }
+    if (!errno && data != NULL && dataLen != 0)
+    {
+      int w = fwrite(data, sizeof(char), dataLen, file);
+      if (w < dataLen)
+      {
+        perror("writeLocalFile internal fwrite error");
+      }
+    }
+    AINZ(fclose(file), "writeLocalFile internal close error", ;)
+
+    free(createDirsShellCommand);
+    free(finalPath);
+    free(dirname);
+    free(absFile);
+
+    if (!errno)
+    {
+      return 0;
+    }
+    else
+    {
+      return -1;
+    }
+  }
+  return 0;
+}
 
 // if path is a relative path, transform it into an absolute one
 char *absolutify(const char *path)
@@ -256,7 +331,7 @@ int openFile(const char *pathname, int flags)
           if (!error && emptyFile)
           {
             puts("the file was empty");
-            AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
+            AINZ(writeLocalFile(filepath, NULL, 0, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
           }
           // otherwise, read its content
           if (!error && !emptyFile)
@@ -269,8 +344,7 @@ int openFile(const char *pathname, int flags)
             if (!error)
             {
               printf("%.*s\n", (int)dataLen, (char *)data);
-              puts(homeDirEvictedFiles);
-              AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
+              AINZ(writeLocalFile(filepath, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
             }
 
             if (data)
@@ -815,81 +889,6 @@ static int readLocalFile(const char *path, void **bufPtr, size_t *size)
   }
 }
 
-// store a file using dirname as root, if it is not null
-// otherwise it has no effects
-// the path must be absolute
-static int writeLocalFile(const char *path, size_t pathLen, const void *data, size_t dataLen, const char *dirname)
-{
-  if (dirname)
-  {
-    // arguments check
-    AIN(path, "path argument of writeLocalFile is NULL", errno = EINVAL; return -1;)
-    AIZ(pathLen, "pathLen argument of writeLocalFile is 0", errno = EINVAL; return -1;)
-    AIZ((path[0] == '/'), "path argument of writeLocalFile is not absolute", errno = EINVAL; return -1;)
-
-    // data == NULL || dataLen == 0 means that the file to write is empty
-
-    // request enough space to concatenate the directory's path and the file's path
-    char *finalPath = calloc(strnlen(dirname, PATH_MAX) + pathLen + 1, sizeof(*finalPath));
-    AIN(finalPath, "writeLocalFile internal malloc error", return -1;)
-
-    // concatenate those paths
-    sprintf(finalPath, "%s%s", dirname, path);
-
-    // now retrieve file's dirname
-    char *slash = strrchr(finalPath, '/'); // it's the last one
-    char fileNameFirstChar = slash[1];     // the file's name + its extension starts after the last slash, store its first letter
-    slash[1] = '\0';                       // temporally hide the file's name
-    char *dirname = strdup(finalPath);
-    AIN(dirname, "writeLocalFile internal strdup error", free(finalPath); return -1;)
-    slash[1] = fileNameFirstChar; // restore the first file's char
-
-    // create file's dirname recursively
-    char *createDirsShellCommand = calloc(strlen(MKDIR) + strlen(dirname) + 2, sizeof(*createDirsShellCommand));
-    AIN(createDirsShellCommand, "writeLocalFile internal malloc error", free(dirname); free(finalPath); return -1;)
-    sprintf(createDirsShellCommand, "%s %s", MKDIR, dirname);
-    errno = 0;
-    system(createDirsShellCommand);
-    if (errno)
-    {
-      perror("writeLocalFile internal error");
-    }
-
-    // open the file to write the content
-    // but only if there is data to write
-    FILE *file;
-    if (!errno)
-    {
-      file = fopen(finalPath, "w+");
-      AIN(file, "writeLocalFile internal file error", ;)
-    }
-    if (!errno && data != NULL && dataLen != 0)
-    {
-      int w = fwrite(data, sizeof(char), dataLen, file);
-      if (w < dataLen)
-      {
-        perror("writeLocalFile internal fwrite error");
-      }
-    }
-    AINZ(fclose(file), "writeLocalFile internal close error", ;)
-
-    free(createDirsShellCommand);
-    free(finalPath);
-    free(dirname);
-
-    if (!errno)
-    {
-      return 0;
-    }
-    else
-    {
-      return -1;
-    }
-  }
-
-  return 0;
-}
-
 // handle the response when is composed by multiple files
 static int handleFilesResponse(const char *opS, const char *dirname)
 {
@@ -952,7 +951,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
         if (!error && emptyFile)
         {
           puts("the file was empty");
-          AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, dirname), "write process in handleFilesResponse to local disk has failed", ;)
+          AINZ(writeLocalFile(filepath, NULL, 0, dirname), "write process in handleFilesResponse to local disk has failed", ;)
         }
         // otherwise, read its content
         if (!error && !emptyFile)
@@ -965,7 +964,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
           if (!error)
           {
             printf("%.*s\n", (int)dataLen, (char *)data);
-            AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, dirname), "write process in handleFilesResponse to local disk has failed", ;)
+            AINZ(writeLocalFile(filepath, data, dataLen, dirname), "write process in handleFilesResponse to local disk has failed", ;)
           }
 
           if (data)
