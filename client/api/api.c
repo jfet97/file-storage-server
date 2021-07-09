@@ -64,12 +64,12 @@ static int doRequest(int, ...);
 static int readLocalFile(const char *, void **, size_t *);
 static char *absolutify(const char *);
 static int writeLocalFile(const char *, size_t, const void *, size_t, const char *);
-static int handleWriteAppendResponse(int, const char *);
+static int handleFilesResponse(const char *, const char *);
 
 // ---------------- API ----------------
 
 // if it will be provided, this variabile will contain the path of the dir
-// used to store the evicted files from the server
+// used to store the evicted file from the server when openFile is called
 char *homeDirEvictedFiles = NULL;
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
@@ -143,7 +143,7 @@ int closeConnection(const char *sockname)
   return toRet;
 }
 
-// O_CREATE | O_LOCK for using both
+// O_CREATE (1) | O_LOCK (2) for using both
 // 0 for no flag
 int openFile(const char *pathname, int flags)
 {
@@ -355,7 +355,9 @@ int writeFile(const char *pathname, const char *dirname)
 
   free(absPath);
 
-  return handleWriteAppendResponse(1, dirname);
+  int numOfFilesHandled = handleFilesResponse("writeFile", dirname);
+
+  return numOfFilesHandled >= 0 ? 0 : -1;
 }
 
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname)
@@ -372,14 +374,27 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
   AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size, 0), "appendToFile has failed", return -1;)
 
   free(absPath);
-  return handleWriteAppendResponse(0, dirname);
+  int numOfFilesHandled = handleFilesResponse("appendToFile", dirname);
+
+  return numOfFilesHandled >= 0 ? 0 : -1;
+}
+
+int readNFiles(int N, const char *dirname)
+{
+  CHECK_FD
+
+  // check arguments
+  AIN(dirname, "invalid dirname argument for readNFiles", errno = EINVAL; return -1;)
+
+  AINZ(doRequest(READ_N_FILES, N), "readNFiles has failed", return -1;)
+
+  return handleFilesResponse("readNFiles", dirname);
 }
 
 int lockFile(const char *pathname);
 int unlockFile(const char *pathname);
 int closeFile(const char *pathname);
 int removeFile(const char *pathname);
-int readNFiles(int N, const char *dirname);
 
 // ---------------- Internals ----------------
 
@@ -437,6 +452,13 @@ static int doRequest(int request, ...)
     AINZ(sendData(fd_skt, pathname, pathLen), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
     AINZ(sendData(fd_skt, buf, size), "APPEND_TO_FILE request failed", toRet = -1; toErrno = errno;)
 
+    break;
+  }
+  case READ_N_FILES:
+  {
+    int N = va_arg(valist, int);
+    AINZ(sendRequestType(fd_skt, READ_N_FILES), "READ_N_FILES request failed", toRet = -1; toErrno = errno;)
+    AINZ(sendData(fd_skt, &N, sizeof(N)), "READ_N_FILES request failed", toRet = -1; toErrno = errno;)
     break;
   }
   default:
@@ -640,19 +662,18 @@ static int writeLocalFile(const char *path, size_t pathLen, const void *data, si
   return 0;
 }
 
-// handle the response for WRITE_FILE and APPEND_TO_FILE requests
-static int handleWriteAppendResponse(int isWrite, const char *dirname)
+// handle the response when is composed by multiple files
+static int handleFilesResponse(const char *opS, const char *dirname)
 {
 
-  const char *op = isWrite ? "writeFile" : "appendToFile";
   int error = 0;
 
   int resCode;
   if (!error)
   {
     // read the result code
-    AINZ(getData(fd_skt, &resCode, 0, 0), "handleWriteAppendResponse has failed", error = 1;)
-    printf("remote %s has received %d as result code\n", op, resCode);
+    AINZ(getData(fd_skt, &resCode, 0, 0), "handleFilesResponse has failed", error = 1;)
+    printf("remote %s has received %d as result code\n", opS, resCode);
   }
 
   if (!error && resCode == -1)
@@ -660,7 +681,7 @@ static int handleWriteAppendResponse(int isWrite, const char *dirname)
     // read the error message
     char *errMess;
     size_t errMessLen;
-    AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+    AINZ(getData(fd_skt, &errMess, &errMessLen, 1), "handleFilesResponse has failed", error = 1;)
 
     // print the error message
     if (!error)
@@ -678,17 +699,17 @@ static int handleWriteAppendResponse(int isWrite, const char *dirname)
   }
   else if (!error && resCode != -1)
   {
-    // read the number of evicted clients
+    // read the number of evicted files
     int numOfEvictedFiles = 0;
-    AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleWriteAppendResponse has failed", error = 1;)
+    AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleFilesResponse has failed", error = 1;)
 
-    // get each evicted client and store it (if dirname is present)
+    // get each evicted file and store it (if dirname is present)
     for (int i = 0; i < numOfEvictedFiles && !error; i++)
     {
       // read the file path
       char *filepath;
       size_t filepathLen;
-      AINZ(getData(fd_skt, &filepath, &filepathLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+      AINZ(getData(fd_skt, &filepath, &filepathLen, 1), "handleFilesResponse has failed", error = 1;)
 
       if (!error)
       {
@@ -696,13 +717,13 @@ static int handleWriteAppendResponse(int isWrite, const char *dirname)
 
         // read if the file was empty
         int emptyFile;
-        AINZ(getData(fd_skt, &emptyFile, 0, 0), "handleWriteAppendResponse has failed", error = 1;)
+        AINZ(getData(fd_skt, &emptyFile, 0, 0), "handleFilesResponse has failed", error = 1;)
 
         // if it was empty, write an empty file
         if (!error && emptyFile)
         {
           puts("the file was empty");
-          AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, dirname), "write process in handleWriteAppendResponse to local disk has failed", ;)
+          AINZ(writeLocalFile(filepath, filepathLen, NULL, 0, dirname), "write process in handleFilesResponse to local disk has failed", ;)
         }
         // otherwise, read its content
         if (!error && !emptyFile)
@@ -710,12 +731,12 @@ static int handleWriteAppendResponse(int isWrite, const char *dirname)
           // read the file content
           void *data;
           size_t dataLen;
-          AINZ(getData(fd_skt, &data, &dataLen, 1), "handleWriteAppendResponse has failed", error = 1;)
+          AINZ(getData(fd_skt, &data, &dataLen, 1), "handleFilesResponse has failed", error = 1;)
 
           if (!error)
           {
             printf("%.*s\n", (int)dataLen, (char *)data);
-            AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, dirname), "write process in handleWriteAppendResponse to local disk has failed", ;)
+            AINZ(writeLocalFile(filepath, filepathLen, data, dataLen, dirname), "write process in handleFilesResponse to local disk has failed", ;)
           }
 
           if (data)
@@ -731,7 +752,7 @@ static int handleWriteAppendResponse(int isWrite, const char *dirname)
       }
     }
 
-    return 0;
+    return error ? -1 : numOfEvictedFiles;
   }
 
   return -1;

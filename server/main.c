@@ -280,7 +280,7 @@ static int setupServerSocket(char *sockname, int upm)
 }
 
 // callback to send a list of evicted result files to a client
-void sendEvictedFilesCallback(void *rawFd, void *rawRF, int *error)
+void sendListOfFilesCallback(void *rawFd, void *rawRF, int *error)
 {
   if (!(*error))
   {
@@ -399,7 +399,6 @@ static void *worker(void *args)
                 // Note: a finer error handling would be possible and should be done in a real application
                 resCode = -1;
                 const char *mess = FileSystem_getErrorMessage(error);
-                sendBackFileDescriptor = 1;
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
                 AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
               }
@@ -435,10 +434,10 @@ static void *worker(void *args)
                   int evicted = 0;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
                 }
-                if (!closeConnection)
-                {
-                  sendBackFileDescriptor = 1;
-                }
+              }
+              if (!closeConnection)
+              {
+                sendBackFileDescriptor = 1;
               }
             }
             free(pathname);
@@ -473,7 +472,6 @@ static void *worker(void *args)
               // Note: a finer error handling would be possible and should be done in a real application
               resCode = -1;
               const char *mess = FileSystem_getErrorMessage(error);
-              sendBackFileDescriptor = 1;
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
             }
@@ -496,15 +494,14 @@ static void *worker(void *args)
                 int emptyFile = 1;
                 AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
               }
-
-              if (!closeConnection)
-              {
-                sendBackFileDescriptor = 1;
-              }
-
               ResultFile_free(&rf, NULL);
             }
             free(pathname);
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
           }
           break;
         }
@@ -557,7 +554,6 @@ static void *worker(void *args)
                 // Note: a finer error handling would be possible and should be done in a real application
                 resCode = -1;
                 const char *mess = FileSystem_getErrorMessage(error);
-                sendBackFileDescriptor = 1;
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
                 AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
               }
@@ -571,23 +567,79 @@ static void *worker(void *args)
                 AINZ(sendData(fd, &numOfEvictedFiles, sizeof(numOfEvictedFiles)), "cannot respond to a client", closeConnection = 1;)
 
                 // send each evicted file
-                List_forEachWithContext(evictedFiles, sendEvictedFilesCallback, &fd, &error);
+                List_forEachWithContext(evictedFiles, sendListOfFilesCallback, &fd, &error);
 
                 if (error)
                 {
                   closeConnection = 1;
                 }
-
-                if (!closeConnection)
-                {
-                  sendBackFileDescriptor = 1;
-                }
+                List_free(&evictedFiles, 1, NULL);
               }
 
-              List_free(&evictedFiles, 1, NULL);
+              if (!closeConnection)
+              {
+                sendBackFileDescriptor = 1;
+              }
+
+              free(buf);
             }
 
             free(pathname);
+          }
+
+          break;
+        }
+        case READ_N_FILES:
+        {
+          int N = 0;
+
+          if (getData(fd, &N, NULL, 0) != 0)
+          {
+            closeConnection = 1;
+          }
+          else
+          {
+            char toLog[LOG_LEN] = {0};
+            sprintf(toLog, "Requested READ_N_FILES operation from client %d. N %d -", fd, N);
+            LOG(toLog);
+
+            List_T rfs = FileSystem_readNFile(fs, id, N, &error);
+
+            int resCode = 0;
+            if (error || rfs == NULL)
+            {
+              // in case of file-system error send a resCode of -1 and an error message
+              // but do not close the connection
+              // Note: a finer error handling would be possible and should be done in a real application
+              resCode = -1;
+              const char *mess = FileSystem_getErrorMessage(error);
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+              AINZ(sendData(fd, mess, strlen(mess)), "cannot respond to a client", closeConnection = 1;)
+            }
+            else
+            {
+              // in case of success send a resCode of 0
+              AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              // send num of read files
+              int numOfReadFiles = List_length(rfs, NULL);
+              AINZ(sendData(fd, &numOfReadFiles, sizeof(numOfReadFiles)), "cannot respond to a client", closeConnection = 1;)
+
+              // send each read file
+              List_forEachWithContext(rfs, sendListOfFilesCallback, &fd, &error);
+
+              if (error)
+              {
+                closeConnection = 1;
+              }
+
+              List_free(&rfs, 1, NULL);
+            }
+
+            if (!closeConnection)
+            {
+              sendBackFileDescriptor = 1;
+            }
           }
 
           break;

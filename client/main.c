@@ -27,6 +27,14 @@
     exit(EXIT_FAILURE);      \
   }
 
+// ABORT_ABRUPTLY_IF_NEGATIVE_ONE
+#define AAINO(code, message) \
+  if (code == -1)            \
+  {                          \
+    perror(message);         \
+    exit(EXIT_FAILURE);      \
+  }
+
 #define BIG_TEXT "AAINZ(appendToFile(\"./ bin / test4.txt \", \" \", , homeDirEvictedFiles), \" openFile has failed \");"
 int main(int argc, char **argv)
 {
@@ -36,7 +44,9 @@ int main(int argc, char **argv)
   abstime.tv_sec = 10;
   abstime.tv_nsec = 0;
 
-  homeDirEvictedFiles = "./bin/dirname";
+  homeDirEvictedFiles = "./bin/evicted";
+
+  const char *homeDirReadFiles = "./bin/read";
 
   AAINZ(openConnection(sockname, 100, abstime), "openConnection has failed")
 
@@ -65,10 +75,13 @@ int main(int argc, char **argv)
   AAINZ(writeFile("./bin/test2.txt", homeDirEvictedFiles), "writeFile has failed")
   AAINZ(writeFile("./bin/test3.txt", homeDirEvictedFiles), "writeFile has failed")
   AAINZ(openFile("./bin/test4.txt", 3), "openFile has failed")
+  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
   AAINZ(appendToFile("./bin/test4.txt", BIG_TEXT, strlen(BIG_TEXT), homeDirEvictedFiles), "openFile has failed")
+  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
   AAINZ(openFile("./bin/test5.txt", 3), "openFile has failed")
   AAINZ(writeFile("./bin/test5.txt", homeDirEvictedFiles), "writeFile has failed")
-
+  AAINO(readNFiles(0, homeDirReadFiles), "readNFiles has failed")
+  //
   // ------------------------------------------------------------------------------
 
   // AAINZ(writeFile(filepath, "DIRNAME"), "writeFile has failed")
