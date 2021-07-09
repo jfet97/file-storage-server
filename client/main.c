@@ -84,6 +84,8 @@ static void writeOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   char *dirname = strcmp(rawDirname, "") == 0 ? NULL : rawDirname;
   char *file = rawFilePath;
 
+  puts(file);
+
   errno = 0;
   // try to open the file with both flags
   openFile(file, O_CREATE | O_LOCK);
@@ -241,13 +243,20 @@ int main(int argc, char **argv)
   int fTimes = 0;
   int pTimes = 0;
   int fFirst = 0;
+  int missingTimeParam = 0;
   for (Option *p = asList; p && !stop; p = p->next)
   {
     char op = p->op;
     if (op == 't')
     {
       // save the timeToWaitBetweenConnections time
-      timeToWaitBetweenConnections = atoi(p->param);
+      if (p->param)
+      {
+        timeToWaitBetweenConnections = atoi(p->param);
+      }
+      {
+        missingTimeParam = 1;
+      }
       tTimes++;
     }
     if (op == 'f')
@@ -280,6 +289,11 @@ int main(int argc, char **argv)
     puts("Error: option t has to be used at most one time");
     error = 1;
   }
+  if (missingTimeParam)
+  {
+    puts("Error: option t has to be used with an argument");
+    error = 1;
+  }
   if (error)
   {
     stop = 1;
@@ -293,8 +307,26 @@ int main(int argc, char **argv)
 
     switch (op)
     {
+    case 'D':
+    {
+      puts("wrong usage of option D");
+      break;
+    }
+    case 'd':
+    {
+      puts("wrong usage of option d");
+      break;
+    }
     case 'f':
     {
+      if (!param)
+      {
+        puts("wrong usage of option f");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
       // save the socket file's name and open the connection
       socket = param;
 
@@ -309,6 +341,14 @@ int main(int argc, char **argv)
     }
     case 'w':
     {
+
+      if (!param)
+      {
+        puts("wrong usage of option w");
+        error = 1;
+        stop = 1;
+        break;
+      }
 
       // clone the param string
       char *paramClone = strdup(param);
@@ -334,10 +374,10 @@ int main(int argc, char **argv)
         AAINZ(readNFilesFromDir(dirToRead, &n, readFiles), "internal error during the handling of option w", error = 1)
       }
 
+      // check if -D was used as the next option
       const char *paramD = NULL;
       if (!error)
       {
-        // check if -D was used as the next option
         if (p->next && p->next->op == 'D')
         {
           // skip it in the next iteration
@@ -363,6 +403,80 @@ int main(int argc, char **argv)
 
       readFiles ? List_free(&readFiles, 0, NULL) : (void)NULL;
       paramClone ? paramClone : NULL;
+
+      if (error)
+      {
+        stop = 1;
+      }
+
+      break;
+    }
+    case 'W':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option W");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option W", stop = 1; error = 1; break;)
+
+      // will contains files read using option W
+      List_T readFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(readFiles, "internal error during the handling of option W", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths to read
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(readFiles, (void*)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option W");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      // check if -D was used as the next option
+      const char *paramD = NULL;
+      if (!error)
+      {
+        if (p->next && p->next->op == 'D')
+        {
+          // skip it in the next iteration
+          p = p->next;
+          // retrieve the dirname where to store the evicted files
+          paramD = p->param;
+          if (paramD == NULL)
+          {
+            // it's not a big trouble, we can go on
+            puts("Wrong usage of -D option: the argument is missing");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        if (paramD == NULL)
+        {
+          paramD = ""; // forEach needs a non NULL context
+        }
+        List_forEachWithContext(readFiles, writeOptionCallback, (void *)paramD, &error);
+      }
+
+      List_free(&readFiles, 0, NULL);
+      free(paramClone);
 
       if (error)
       {

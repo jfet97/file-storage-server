@@ -93,7 +93,7 @@ char *absolutify(const char *path)
   // check if path is already absolute, in such a case clone it
   if (path == strchr(path, '/'))
   {
-    memcpy(toRet, path, strlen(path) + 1);
+    memcpy(toRet, path, strlen(path));
   }
   else
   {
@@ -666,7 +666,7 @@ static int doRequest(int request, ...)
   {
     char *pathname = va_arg(valist, char *);
     int flags = va_arg(valist, int);
-    size_t pathLen = strlen(pathname);
+    size_t pathLen = strlen(pathname) + 1;
 
     AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
     AINZC(!toErrno, sendData(fd_skt, pathname, pathLen), "request failed", toRet = -1; toErrno = errno;)
@@ -678,7 +678,7 @@ static int doRequest(int request, ...)
   case APPEND_TO_FILE:
   {
     char *pathname = va_arg(valist, char *);
-    size_t pathLen = strlen(pathname);
+    size_t pathLen = strlen(pathname) + 1;
     void *buf = va_arg(valist, void *);
     size_t size = va_arg(valist, size_t);
 
@@ -702,7 +702,7 @@ static int doRequest(int request, ...)
   case REMOVE_FILE:
   {
     char *pathname = va_arg(valist, char *);
-    size_t pathLen = strlen(pathname);
+    size_t pathLen = strlen(pathname) + 1;
 
     AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
     AINZC(!toErrno, sendData(fd_skt, pathname, pathLen), "request failed", toRet = -1; toErrno = errno;)
