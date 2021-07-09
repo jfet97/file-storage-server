@@ -617,6 +617,40 @@ int main(int argc, char **argv)
 
       break;
     }
+    case 'R':
+    {
+      int n = 0;
+      if (param)
+      {
+        n = atoi(param);
+      }
+
+      // check if -d was used as the next option
+      const char *paramD = NULL;
+
+      if (p->next && p->next->op == 'd')
+      {
+        // skip it in the next iteration
+        p = p->next;
+        // retrieve the dirname where to store the read files
+        paramD = p->param;
+        if (paramD == NULL)
+        {
+          // it's not a big trouble, we can go on
+          puts("Wrong usage of -d option: the argument is missing");
+        }
+      }
+
+      int r = readNFiles(n, paramD);
+      if (r < 0)
+      {
+        perror("something has gone wrong during handling of option R");
+      } else {
+        printf("%d files has been read\n", r);
+      }
+
+      break;
+    }
     default:
     {
       break;
