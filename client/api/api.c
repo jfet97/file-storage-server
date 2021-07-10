@@ -483,6 +483,11 @@ int writeFile(const char *pathname, const char *dirname)
 
   free(absPath);
 
+  if (buf)
+  {
+    free(buf);
+  }
+
   int numOfFilesHandled = handleFilesResponse("writeFile", dirname);
 
   return numOfFilesHandled >= 0 ? 0 : -1;
@@ -535,7 +540,7 @@ int lockFile(const char *pathname)
   char *absPath = absolutify(pathname);
   AIN(absPath, "lockFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(LOCK_FILE, absPath), "lockFile has failed", return -1;)
+  AINZ(doRequest(LOCK_FILE, absPath), "lockFile has failed", free(absPath); return -1;)
 
   // read the result code
   int resCode;
@@ -569,6 +574,8 @@ int lockFile(const char *pathname)
     }
   }
 
+  free(absPath);
+
   if (error)
   {
     return -1;
@@ -592,7 +599,7 @@ int unlockFile(const char *pathname)
   char *absPath = absolutify(pathname);
   AIN(absPath, "unlockFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(UNLOCK_FILE, absPath), "unlockFile has failed", return -1;)
+  AINZ(doRequest(UNLOCK_FILE, absPath), "unlockFile has failed", free(absPath); return -1;)
 
   // read the result code
   int resCode;
@@ -626,6 +633,8 @@ int unlockFile(const char *pathname)
     }
   }
 
+  free(absPath);
+
   if (error)
   {
     return -1;
@@ -649,7 +658,7 @@ int closeFile(const char *pathname)
   char *absPath = absolutify(pathname);
   AIN(absPath, "closeFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(CLOSE_FILE, absPath), "closeFile has failed", return -1;)
+  AINZ(doRequest(CLOSE_FILE, absPath), "closeFile has failed", free(absPath); return -1;)
 
   // read the result code
   int resCode;
@@ -683,6 +692,8 @@ int closeFile(const char *pathname)
     }
   }
 
+  free(absPath);
+
   if (error)
   {
     return -1;
@@ -706,7 +717,7 @@ int removeFile(const char *pathname)
   char *absPath = absolutify(pathname);
   AIN(absPath, "closeFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(REMOVE_FILE, absPath), "removeFile has failed", return -1;)
+  AINZ(doRequest(REMOVE_FILE, absPath), "removeFile has failed", free(absPath); return -1;)
 
   // read the result code
   int resCode;
@@ -739,6 +750,8 @@ int removeFile(const char *pathname)
       errno = EPERM;
     }
   }
+
+  free(absPath);
 
   if (error)
   {

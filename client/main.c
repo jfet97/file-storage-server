@@ -475,7 +475,7 @@ int main(int argc, char **argv)
       AAIN(paramClone, "strdup has failed during the handling of option w", stop = 1; error = 1; break;)
 
       char *dirToRead = strtok(paramClone, ",");
-      AAIN(dirToRead, "wrong use of option w", stop = 1; error = 1; break;)
+      AAIN(dirToRead, "wrong use of option w", stop = 1; error = 1; free(paramClone); break;)
 
       char *sn = strtok(NULL, ",");
       int n = 0;
@@ -531,8 +531,8 @@ int main(int argc, char **argv)
         List_forEachWithContext(readFiles, writeOptionCallback, (void *)paramD, &error);
       }
 
-      readFiles ? List_free(&readFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      readFiles ? List_free(&readFiles, 1, NULL) : (void)NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       if (error && error != EPERM)
       {
@@ -606,7 +606,7 @@ int main(int argc, char **argv)
       }
 
       readFiles ? List_free(&readFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       if (error && error != EPERM)
       {
@@ -680,7 +680,7 @@ int main(int argc, char **argv)
       }
 
       toReadFiles ? List_free(&toReadFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       if (error && error != EPERM)
       {
@@ -778,7 +778,7 @@ int main(int argc, char **argv)
       }
 
       toLockFiles ? List_free(&toLockFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       break;
     }
@@ -830,7 +830,7 @@ int main(int argc, char **argv)
       }
 
       toUnlockFiles ? List_free(&toUnlockFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       break;
     }
@@ -882,7 +882,7 @@ int main(int argc, char **argv)
       }
 
       toRemoveFiles ? List_free(&toRemoveFiles, 0, NULL) : (void)NULL;
-      paramClone ? paramClone : NULL;
+      paramClone ? free(paramClone) : (void)NULL;
 
       break;
     }
@@ -894,6 +894,10 @@ int main(int argc, char **argv)
   }
 
   CommandLineParser_delete(&as, NULL);
+  if (allowPrints)
+  {
+    puts("Goodbye!");
+  }
 
   if (error)
   {
@@ -901,7 +905,6 @@ int main(int argc, char **argv)
   }
   else
   {
-
     return 0;
   }
 }
