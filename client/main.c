@@ -425,8 +425,6 @@ int main(int argc, char **argv)
     {
       stop = 1;
       printf("\nUsage: %s -h\n"
-             "Usage: %s -f socketPath [-w dirname [n=0]] [-Dd dirname] [-p]"
-             "[-t [0]] [-R [n=0]] [-Wrluc file1 [,file2,file3 ...]]\n"
              "Options:\n"
              "  -h,\tPrints the info message\n"
              "  -O,\tSets the dir for openFile eviction. If no dir is setted, the file/s will be lost"
@@ -447,7 +445,7 @@ int main(int argc, char **argv)
              "  -n,\tOpen the specified files using the flag O_CREATE\n"
              "  -c,\tRemoves the specified files from the server\n"
              "  -p,\tPrints information about operation performed on the server\n",
-             argv[0], argv[0]);
+             argv[0]);
     }
   }
 
@@ -471,17 +469,17 @@ int main(int argc, char **argv)
       allowPrints = 1;
     }
   }
-  if (!fFirst)
+  if (!stop && !fFirst)
   {
     puts("Error: option f has to be the first used option");
     error = 1;
   }
-  if (fTimes != 1)
+  if (!stop && fTimes != 1)
   {
     puts("Error: option f has to be used one and only one time");
     error = 1;
   }
-  if (pTimes > 1)
+  if (!stop && pTimes > 1)
   {
     puts("Error: option p has to be used at most one time");
     error = 1;

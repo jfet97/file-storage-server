@@ -24,3 +24,6 @@ debug-d:
 clean:
 	(cd ./client && make clean)
 	(cd ./server && make clean)
+
+test1: clean dist
+	(cd test/test1 && bash script.sh)

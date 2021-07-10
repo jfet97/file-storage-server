@@ -908,7 +908,28 @@ int main(int argc, char **argv)
 
   // ----------------------------------------------------------------------
 
-  char *configPath = argv[1];
+  // create pipes
+
+  // on 0 the main thread reads which signal has arrived
+  // on 1 the signal handler write such signals
+  int masterSigHandlerPipe[2];
+  AAINZ(pipe(masterSigHandlerPipe), "masterSigHandlerPipe initialization has failed")
+
+  // on 0 the main thread reads which fds are ready to be setted into the fd_set set
+  // on 1 workers write such fds
+  int masterWorkersPipe[2];
+  AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
+
+  // ----------------------------------------------------------------------
+
+  // run signal handler
+  createDetachSigHandlerThread(masterSigHandlerPipe[1]);
+
+  maskSIGPIPEAndHandledSignals();
+
+  // ----------------------------------------------------------------------
+
+    char *configPath = argv[1];
   AAIN(configPath, "missing configuration path");
 
   // parser the configuration file
@@ -1054,27 +1075,6 @@ int main(int argc, char **argv)
   // of the clients
   SimpleQueue sq = SimpleQueue_create(&error);
   HANDLE_QUEUE_ERROR_ABORT(error);
-
-  // ----------------------------------------------------------------------
-
-  // create pipes
-
-  // on 0 the main thread reads which signal has arrived
-  // on 1 the signal handler write such signals
-  int masterSigHandlerPipe[2];
-  AAINZ(pipe(masterSigHandlerPipe), "masterSigHandlerPipe initialization has failed")
-
-  // on 0 the main thread reads which fds are ready to be setted into the fd_set set
-  // on 1 workers write such fds
-  int masterWorkersPipe[2];
-  AAINZ(pipe(masterWorkersPipe), "masterWorkersPipe initialization has failed")
-
-  // ----------------------------------------------------------------------
-
-  // run signal handler
-  createDetachSigHandlerThread(masterSigHandlerPipe[1]);
-
-  maskSIGPIPEAndHandledSignals();
 
   // ----------------------------------------------------------------------
 
@@ -1227,12 +1227,6 @@ int main(int argc, char **argv)
             {
               perror("something bad has appened trying to read from masterSigHandlerPipe");
               exit(EXIT_FAILURE);
-            }
-            else
-            {
-              char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "Signal %d has been detected -", signal);
-              LOG(toLog)
             }
           }
           else

@@ -1,4 +1,30 @@
+echo "-----------------------------------"
+
+pwd
+
+# move into server folder
+cd ../../server
+
+pwd
+
 # launch server in background
-valgrind --leak-check=full bin/server ../test/test1/config.txt &
+valgrind --leak-check=full bin/main ../test/test1/config.txt &
+
 # save its PID
 SERVER_PID=$!
+
+echo $!
+
+# move into client folder
+cd ../client
+
+pwd
+
+# see usage
+bin/main -h
+
+# CLIENT 1
+bin/main -f ../../server/bin/mysocket -w ../../ -p
+
+# kill server
+kill -2 $SERVER_PID
