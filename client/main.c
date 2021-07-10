@@ -23,6 +23,19 @@
 #define O_CREATE 1
 #define O_LOCK 2
 
+int timeToWaitBetweenConnections = 0; // set using option t
+
+#define AWAIT                                                              \
+  {                                                                        \
+    if (timeToWaitBetweenConnections)                                      \
+    {                                                                      \
+      struct timespec interval;                                            \
+      interval.tv_sec = timeToWaitBetweenConnections / 1000;               \
+      interval.tv_nsec = (timeToWaitBetweenConnections % 1000) * 1000000L; \
+      nanosleep(&interval, NULL); /* if it fails is not a big deal */      \
+    }                                                                      \
+  }
+
 // ABORT_ABRUPTLY_IF_NULL
 #define AAIN(code, message, action) \
   if (code == NULL)                 \
@@ -85,12 +98,15 @@ static void writeOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   char *file = rawFilePath;
 
   errno = 0;
+
+  AWAIT
   // try to open the file with both flags
   openFile(file, O_CREATE | O_LOCK);
 
   // if the operation has ended successfully
   if (errno == 0)
   {
+    AWAIT
     writeFile(file, dirname);
     // is a bad bad error only if it is different from EPERM
     if (errno != EPERM)
@@ -120,9 +136,11 @@ static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   char *file = rawFilePath;
 
   errno = 0;
+
   // try to read the file
   void *buf = NULL;
   size_t size;
+  AWAIT
   readFile(file, &buf, &size);
 
   // if the operation has ended successfully
@@ -160,6 +178,7 @@ static void lockOptionCallback(void *rawFilePath, int *error)
   errno = 0;
 
   // try to lock the file
+  AWAIT
   lockFile(file);
 
   // if the error is different from op. not permitted, report it
@@ -180,6 +199,7 @@ static void unlockOptionCallback(void *rawFilePath, int *error)
   errno = 0;
 
   // try to unlock the file
+  AWAIT
   unlockFile(file);
 
   // if the error is different from op. not permitted, report it
@@ -200,6 +220,7 @@ static void removeOptionCallback(void *rawFilePath, int *error)
   errno = 0;
 
   // try to remove the file
+  AWAIT
   removeFile(file);
 
   // if the error is different from op. not permitted, report it
@@ -293,8 +314,7 @@ int main(int argc, char **argv)
   int error = 0;
   int stop = 0;
 
-  const char *socket = "";              // socket file used for communication with the server
-  int timeToWaitBetweenConnections = 0; // set using option t
+  const char *socket = ""; // socket file used for communication with the server
 
   // setup the command line arguments parser
   Arguments as = CommandLineParser_parseArguments(argv + 1, &error);
@@ -343,26 +363,12 @@ int main(int argc, char **argv)
 
   // check if option f is the first option and check if options t and p are used only one time
   // set option t and option p
-  int tTimes = 0;
   int fTimes = 0;
   int pTimes = 0;
   int fFirst = 0;
-  int missingTimeParam = 0;
   for (Option *p = asList; p && !stop; p = p->next)
   {
     char op = p->op;
-    if (op == 't')
-    {
-      // save the timeToWaitBetweenConnections time
-      if (p->param)
-      {
-        timeToWaitBetweenConnections = atoi(p->param);
-      }
-      {
-        missingTimeParam = 1;
-      }
-      tTimes++;
-    }
     if (op == 'f')
     {
       fFirst = p == asList;
@@ -390,16 +396,6 @@ int main(int argc, char **argv)
     puts("Error: option p has to be used at most one time");
     error = 1;
   }
-  if (tTimes > 1)
-  {
-    puts("Error: option t has to be used at most one time");
-    error = 1;
-  }
-  if (missingTimeParam)
-  {
-    puts("Error: option t has to be used with an argument");
-    error = 1;
-  }
   if (error)
   {
     stop = 1;
@@ -413,6 +409,18 @@ int main(int argc, char **argv)
 
     switch (op)
     {
+    case 't':
+    {
+      // save the timeToWaitBetweenConnections time
+      if (p->param)
+      {
+        timeToWaitBetweenConnections = atoi(p->param);
+      } else
+      {
+        timeToWaitBetweenConnections = 0;
+      }
+      break;
+    }
     case 'O':
     {
       // it can be null
@@ -705,6 +713,8 @@ int main(int argc, char **argv)
         }
       }
 
+      // try to read N Files
+      AWAIT
       int r = readNFiles(n, paramD);
       if (r < 0)
       {

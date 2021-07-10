@@ -26,6 +26,9 @@
 #include "communication.h"
 #include <stdarg.h>
 
+// ACHTUNG: failed logical operation on the remote file-system (e.g. openFile, lockFile,...)
+// are repoprted using EPERM error
+
 // if it will be provided, this variabile will contain the path of the dir
 // used to store the evicted file from the server when openFile is called (set using -O option)
 extern char *homeDirEvictedFiles;
