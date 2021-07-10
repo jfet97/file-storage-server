@@ -118,8 +118,6 @@ void print(int *error)
     }
 }
 
-// TODO: hai fatto le signal?
-
 // invarianti:
 // non posso aprire un file lockato da qualcun'altro
 // posso aprire/chiudere un file non lockato

@@ -122,7 +122,7 @@ sig_handler_cb(int signum, int pipe)
   if (signum == SIGTSTP || signum == SIGTERM)
   {
     printf("\nshutting down soon because of %d...\n", signum);
-    exit(EXIT_SUCCESS);
+    exit(EXIT_FAILURE);
   }
   else if (signum == SIGQUIT || signum == SIGINT)
   {
@@ -241,7 +241,7 @@ static int setupServerSocket(char *sockname, int upm)
   if (fd_skt == -1 && errno == EINTR)
   {
     perror("socket function was interrupted by a signal");
-    exit(EXIT_SUCCESS);
+    exit(EXIT_FAILURE);
   }
   else if (fd_skt == -1)
   {
@@ -256,7 +256,7 @@ static int setupServerSocket(char *sockname, int upm)
   if (eb == -1 && errno == EINTR)
   {
     perror("bind function was interrupted by a signal");
-    exit(EXIT_SUCCESS);
+    exit(EXIT_FAILURE);
   }
   else if (eb == -1)
   {
@@ -271,7 +271,7 @@ static int setupServerSocket(char *sockname, int upm)
   if (el == -1 && errno == EINTR)
   {
     perror("listen function was interrupted by a signal");
-    exit(EXIT_SUCCESS);
+    exit(EXIT_FAILURE);
   }
   else if (el == -1)
   {
@@ -349,8 +349,9 @@ static void *worker(void *args)
             operationHasBeenRead = 1;
           },
           {
-            // whatever has appened that is not success
-            // e.g. the client has closed the connection
+            // whatever has appened that is not success,
+            // e.g. the client has closed the connection,
+            // we close the connection with the client
             if (errno)
             {
               perror("cannot read the request from the client");
@@ -1106,7 +1107,7 @@ int main(int argc, char **argv)
     if (sel_res == -1 && errno == EINTR)
     {
       perror("select function was interrupted by a signal");
-      exit(EXIT_SUCCESS);
+      exit(EXIT_FAILURE);
     }
     else if (sel_res == -1)
     {
@@ -1128,7 +1129,7 @@ int main(int argc, char **argv)
             if (fd_c == -1 && errno == EINTR)
             {
               perror("accept function was interrupted by a signal");
-              exit(EXIT_SUCCESS);
+              exit(EXIT_FAILURE);
             }
             else if (fd_c == -1)
             {
@@ -1156,22 +1157,30 @@ int main(int argc, char **argv)
             // or -1 if a client has disconnected
             int fd;
 
-            readn(masterWorkersPipe[0], &fd, sizeof(fd)); // TODO: gestire a modo errori
+            HANDLE_WRNS(readn(masterWorkersPipe[0], &fd, sizeof(fd)), sizeof(fd), ;, error = 1;);
 
-            if (fd == -1)
+            if (error)
             {
-              // decrease the number of connected clients
-              nOfConnectedClients--;
-              char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "A client has disconnected, %d clients currently connected -", nOfConnectedClients);
-              LOG(toLog)
+              perror("something bad has appened trying to read from masterWorkersPipe");
+              exit(EXIT_FAILURE);
             }
             else
             {
-              FD_SET(fd, &set);
-              if (fd > fd_num)
+              if (fd == -1)
               {
-                fd_num = fd;
+                // decrease the number of connected clients
+                nOfConnectedClients--;
+                char toLog[LOG_LEN] = {0};
+                sprintf(toLog, "A client has disconnected, %d clients currently connected -", nOfConnectedClients);
+                LOG(toLog)
+              }
+              else
+              {
+                FD_SET(fd, &set);
+                if (fd > fd_num)
+                {
+                  fd_num = fd;
+                }
               }
             }
           }
@@ -1179,7 +1188,13 @@ int main(int argc, char **argv)
           {
 
             // retrieve the signal
-            readn(masterSigHandlerPipe[0], &signal, sizeof(signal)); // TODO: gestire a modo errori
+            HANDLE_WRNS(readn(masterSigHandlerPipe[0], &signal, sizeof(signal));, sizeof(signal), ;, error = 1;);
+
+            if (error)
+            {
+              perror("something bad has appened trying to read from masterSigHandlerPipe");
+              exit(EXIT_FAILURE);
+            }
           }
           else
           { // if an already known client (fd) has a new request, send it to the workers
@@ -1251,10 +1266,15 @@ int main(int argc, char **argv)
 
   // ----------------------------------------------------------------------
 
-  // TODO: check errori
   for (int i = 0; i < N_OF_WORKERS; i++)
   {
+    errno = 0;
     pthread_join(workers[i], NULL);
+    if (errno)
+    {
+      perror("something has gone wrong in pthread_join - skipping join process");
+      break;
+    }
   }
 
   // ----------------------------------------------------------------------
