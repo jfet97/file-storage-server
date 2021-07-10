@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include <sys/syscall.h>
 #include <limits.h>
 #include <stdio.h>
@@ -415,7 +414,8 @@ int main(int argc, char **argv)
       if (p->param)
       {
         timeToWaitBetweenConnections = atoi(p->param);
-      } else
+      }
+      else
       {
         timeToWaitBetweenConnections = 0;
       }

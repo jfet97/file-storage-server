@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include "simple_queue.h"
 #include <assert.h>
 #include <pthread.h>
@@ -149,7 +148,7 @@ int main(void)
 
     for (int i = 0; i < N; ++i)
     {
-        tds[i].n_of_threads = (i*i + N)/7;
+        tds[i].n_of_threads = (i * i + N) / 7;
         tds[i].num = i * 100;
         tds[i].interrupt = i % 2;
         tds[i].queue = queues[i];

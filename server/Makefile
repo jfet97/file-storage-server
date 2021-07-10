@@ -55,11 +55,17 @@ file-system-d:
 list-d:
 	cd ../list/ && $(MAKE) debug
 
-bin/main: main.c simple-queue config-parser logger communication file-system list
+hashmap:
+	cd ../hashmap && $(MAKE) all
+
+hashmap-d:
+	cd ../hashmap && $(MAKE) debug
+
+bin/main: main.c simple-queue config-parser logger communication file-system list hashmap
 	(mkdir bin || true)
 	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $@
 
-main-d: main.c simple-queue-d config-parser-d logger-d communication-d file-system-d list-d
+main-d: main.c simple-queue-d config-parser-d logger-d communication-d file-system-d list-d hashmap-d
 	(mkdir bin || true)
 	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $(TARGET)
 
@@ -73,3 +79,4 @@ clean:
 	cd ../communication && make clean
 	cd ../file-system && make clean
 	cd ../list && make clean
+	cd ../hashmap && make clean

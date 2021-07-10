@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include <sys/syscall.h>
 #include <limits.h>
 #include <stdio.h>
@@ -10,6 +9,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/select.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -105,8 +105,12 @@ typedef struct
   FileSystem fs;
 } WorkerContext;
 
+// socket file name
+char *SOCKNAME = NULL;
+
 // signal handler callback
-static void sig_handler_cb(int signum, int pipe)
+static void
+sig_handler_cb(int signum, int pipe)
 {
   int toSend = 0;
 
@@ -172,15 +176,14 @@ static void *sig_handler(void *arg)
 }
 
 // cleanup function
-static void end(int exit, void *arg)
+static void end()
 {
-  char *sockname = arg;
+  char *sockname = SOCKNAME;
   if (sockname)
   {
     // remove the socket file
     remove(sockname);
   }
-  printf("Exited with code: %d\n", exit);
   puts("Goodbye, cruel world....");
 }
 
@@ -288,7 +291,7 @@ void sendListOfFilesCallback(void *rawFd, void *rawRF, int *error)
     ResultFile rf = rawRF;
 
     // send the file's path
-    AINZ(sendData(fd, rf->path, strlen(rf->path) +1), "cannot respond to a client", *error = 1;)
+    AINZ(sendData(fd, rf->path, strlen(rf->path) + 1), "cannot respond to a client", *error = 1;)
 
     // send a message to say if the evicted file was empty or not
     // send the file's content if it is not empty
@@ -411,7 +414,7 @@ static void *worker(void *args)
                   int evicted = 1;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
                   // send the file's path
-                  AINZ(sendData(fd, rf->path, strlen(rf->path) +1), "cannot respond to a client", closeConnection = 1;)
+                  AINZ(sendData(fd, rf->path, strlen(rf->path) + 1), "cannot respond to a client", closeConnection = 1;)
 
                   // send a message to say if the evicted file was empty or not
                   // send the file's content if it is not empty
@@ -887,7 +890,7 @@ int main(int argc, char **argv)
   // read the configurations file
 
   // - socket file name
-  char *SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
+  SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
   if (error)
   {
     puts(ConfigParser_getErrorMessage(error));
@@ -1009,7 +1012,7 @@ int main(int argc, char **argv)
   // ----------------------------------------------------------------------
 
   // set cleanup function to remove the socket file
-  AAINZ(on_exit(end, SOCKNAME), "set of the cleanup function has failed")
+  AAINZ(atexit(end), "set of the cleanup function has failed")
   // ----------------------------------------------------------------------
 
   // thread safe queue to send to the workers the ready fds
