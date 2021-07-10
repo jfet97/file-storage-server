@@ -24,6 +24,7 @@ debug-d:
 clean:
 	(cd ./client && make clean)
 	(cd ./server && make clean)
+	((cd test/test1 && rm -f log.txt) || true)
 
 test1: clean dist
 	(cd test/test1 && bash script.sh)

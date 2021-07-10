@@ -100,9 +100,9 @@ void printFile(void *rawFile, int *_)
     puts("--------------------------");
     printf("File Path is: %s\n", file->path);
     printf("File Size is: %d\n", file->size);
-    if(file->size) {
-        printf("File Data is: %.*s\n", (int)file->size, file->data);
-    }
+    // if(file->size) {
+    //     printf("File Data is: %.*s\n", (int)file->size, file->data);
+    // }
     puts("--------------------------");
 }
 

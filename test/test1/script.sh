@@ -24,7 +24,9 @@ pwd
 bin/main -h
 
 # CLIENT 1
-bin/main -f ../../server/bin/mysocket -w ../../ -p
+bin/main -f ../server/bin/mysocket -w ../ -p
 
 # kill server
 kill -2 $SERVER_PID
+
+wait $SERVER_PID

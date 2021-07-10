@@ -1,3 +1,0 @@
-1 workers launched - Sat Jul 10 20:54:03 2021
-Received signal 2 - Sat Jul 10 20:55:00 2021
-Shutdown process initiated Sat Jul 10 20:55:00 2021
