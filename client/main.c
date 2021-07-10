@@ -246,6 +246,30 @@ static void closeOptionCallback(void *rawFilePath, int *error)
   }
 }
 
+// used to open a list of files
+static void openOptionCallback(void *rawFlags, void *rawFilePath, int *error)
+{
+  if (*error)
+  {
+    return;
+  }
+
+  char *file = rawFilePath;
+  int flag = *((int *)rawFlags);
+
+  errno = 0;
+
+  // try to close the file
+  AWAIT
+  openFile(file, flag);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+
 // used to unlock a list of files
 static void unlockOptionCallback(void *rawFilePath, int *error)
 {
@@ -418,6 +442,9 @@ int main(int argc, char **argv)
              "  -l,\tLocks the specified files\n"
              "  -u,\tUnlocks the specified files\n"
              "  -s,\tClose the specified files\n"
+             "  -o,\tOpen the specified files without flags\n"
+             "  -e,\tOpen the specified files using the flag O_LOCK\n"
+             "  -n,\tOpen the specified files using the flag O_CREATE\n"
              "  -c,\tRemoves the specified files from the server\n"
              "  -p,\tPrints information about operation performed on the server\n",
              argv[0], argv[0]);
@@ -1002,9 +1029,117 @@ int main(int argc, char **argv)
 
       break;
     }
+    case 'o':
+    case 'e':
+    case 'n':
+    {
 
+      int isOOpen = op == 'o'; // open
+      int isEOpen = op == 'e'; // open using O_CREATE
+      int isNOpen = op == 'n'; // open using O_LOCK
 
+      if (!param)
+      {
+        if (isOOpen)
+        {
+          puts("wrong usage of option o");
+        }
+        if (isEOpen)
+        {
+          puts("wrong usage of option e");
+        }
+        if (isNOpen)
+        {
+          puts("wrong usage of option n");
+        }
+        error = 1;
+        stop = 1;
+        break;
+      }
 
+      char *paramClone = strdup(param);
+      if (isOOpen)
+      {
+        AAIN(paramClone, "strdup has failed during the handling of option o", stop = 1; error = 1; break;)
+      }
+      if (isEOpen)
+      {
+        AAIN(paramClone, "strdup has failed during the handling of option e", stop = 1; error = 1; break;)
+      }
+      if (isNOpen)
+      {
+        AAIN(paramClone, "strdup has failed during the handling of option n", stop = 1; error = 1; break;)
+      }
+
+      // will contains files to open using option o
+      List_T toOpenFiles = List_create(NULL, NULL, NULL, &error);
+
+      if (isOOpen)
+      {
+        AAIN(toOpenFiles, "internal error during the handling of option o", puts(List_getErrorMessage(error)); error = 1;)
+      }
+      if (isEOpen)
+      {
+        AAIN(toOpenFiles, "internal error during the handling of option e", puts(List_getErrorMessage(error)); error = 1;)
+      }
+      if (isNOpen)
+      {
+        AAIN(toOpenFiles, "internal error during the handling of option n", puts(List_getErrorMessage(error)); error = 1;)
+      }
+
+      // get the files' paths
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toOpenFiles, (void *)token, &error);
+          if (error)
+          {
+            if (isOOpen)
+            {
+              puts("internal error during the handling of option o");
+            }
+            if (isEOpen)
+            {
+              puts("internal error during the handling of option e");
+            }
+            if (isNOpen)
+            {
+              puts("internal error during the handling of option n");
+            }
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        int flag = 0;
+        if (isEOpen)
+        {
+          flag = O_CREATE;
+        }
+        if (isNOpen)
+        {
+          flag = O_LOCK;
+        }
+        List_forEachWithContext(toOpenFiles, openOptionCallback, &flag, &error);
+      }
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      toOpenFiles ? List_free(&toOpenFiles, 0, NULL) : (void)NULL;
+      paramClone ? free(paramClone) : (void)NULL;
+
+      break;
+    }
 
     case 'a':
     {
