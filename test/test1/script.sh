@@ -8,8 +8,8 @@ cd ../../server
 pwd
 
 # launch server in background
-valgrind --leak-check=full bin/main ../test/test1/config.txt &
-# bin/main ../test/test1/config.txt &
+# valgrind --leak-check=full bin/main ../test/test1/config.txt &
+bin/main ../test/test1/config.txt &
 
 # save its PID
 SERVER_PID=$!
@@ -26,7 +26,18 @@ bin/main -h
 bin/main -f ../server/bin/mysocket -t 200 -w ../test/local-file-system -D ../test/test1/clients/evicted -s ../././test/local-file-system/images/pic1.jpg,../test/local-file-system/images/pic2.jpg,../test/local-file-system/images/pic3.jpg,../test/local-file-system/music/music1.mp3,../test/local-file-system/music/music2.mp3,../test/local-file-system/text-files/lorems/lorem10.txt,../test/local-file-system/text-files/lorems/lorem150.txt,../test/local-file-system/text-files/lorems/lorem513.txt,../test/local-file-system/text-files/lorems/lorem1000.txt -p
 
 # CLIENT 2
-bin/main -f ../server/bin/mysocket -t 200 -n  ../test/local-file-system/text-files/lorems/lorem10.txt -c ../test/local-file-system/text-files/lorems/lorem10.txt -p
+bin/main -f ../server/bin/mysocket -t 200 -n  ../test/local-file-system/text-files/lorems/lorem10.txt -c ../test/local-file-system/text-files/lorems/lorem10.txt -p &
+
+# CLIENT 3
+bin/main -f ../server/bin/mysocket -t 200 -R n=0 -d ../test/test1/clients/read -p &
+
+# CLIENT 4
+bin/main -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -e ./test/file/casuale.txt -a ../test/local-file-system/text-files/lorems/lorem1000.txt,./test/file/casuale.txt  -p &
+
+# CLIENT 5
+bin/main -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -c ../test/local-file-system/text-files/lorems/lorem1000.txt -p &
+
+sleep 15
 
 # kill server
 kill -1 $SERVER_PID
