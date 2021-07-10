@@ -77,8 +77,7 @@ int fd_skt = -1;
 #define MKDIR "mkdir -p"
 
 static int doRequest(int, ...);
-static int readLocalFile(const char *, void **, size_t *);
-static int handleFilesResponse(const char *, const char *);
+static int handleFilesResponse(int, const char *, const char *);
 
 // ---------------- API ----------------
 
@@ -89,9 +88,103 @@ char *homeDirEvictedFiles = NULL;
 // if 1, log strings will be outputted to stdout
 int allowPrints = 0;
 
+// read a file from disk
+int readLocalFile(const char *path, void **bufPtr, size_t *size)
+{
+  AIN(path, "invalid path argument for readLocalFile", errno = EINVAL; return -1;)
+  AIN(bufPtr, "invalid bufPtr argument for readLocalFile", errno = EINVAL; return -1;)
+  AIN(size, "invalid size argument for readLocalFile", errno = EINVAL; return -1;)
+
+  FILE *fptr = NULL;
+  *bufPtr = NULL;
+
+  // control flow flags
+  int error = 0;
+  int closeFile = 0;
+  int freeBuf = 0;
+
+  // open the file
+  fptr = fopen(path, "r");
+  AIN(fptr, "cannot open the file in readLocalFile", error = 1;)
+
+  // go to the end of the file
+  if (!error)
+  {
+    AINZ(fseek(fptr, 0L, SEEK_END), "readLocalFile internal error: fseek", error = 1; closeFile = 1;)
+  }
+
+  // read its size
+  if (!error)
+  {
+    *size = ftell(fptr);
+    AINO(*size, "readLocalFile internal error: ftell", error = 1; closeFile = 1;)
+  }
+
+  // rewind the file pointer
+  if (!error)
+  {
+    errno = 0;
+    rewind(fptr);
+    if (errno)
+    {
+      error = 1;
+      closeFile = 1;
+      perror("readLocalFile internal error: rewind");
+    }
+  }
+
+  // alloc enough space
+  if (!error)
+  {
+    *bufPtr = malloc(sizeof(char) * (*size));
+    AIN(*bufPtr, "readLocalFile internal error: malloc", error = 1; closeFile = 1;)
+  }
+
+  // read the file into the buffer
+  if (!error)
+  {
+    int readSize = fread(*bufPtr, sizeof(char), *size, fptr);
+    if (readSize < *size)
+    {
+      perror("readLocalFile internal error: fread");
+      error = 1;
+      freeBuf = 1;
+    }
+
+    closeFile = 1;
+  }
+
+  if (closeFile)
+  {
+    errno = 0;
+    fclose(fptr);
+    if (errno)
+    {
+      perror("readLocalFile internal error: fclose");
+      error = 1;
+      freeBuf = 1;
+    }
+  }
+
+  if (freeBuf)
+  {
+    free(*bufPtr);
+    *bufPtr = NULL;
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    P(printf("successfully read the file %s from disk of size %d\n", path, *size));
+    return 0;
+  }
+}
+
 // store a file using dirname as root, if it is not null
 // otherwise it has no effects
-// the path must be absolute
 int writeLocalFile(const char *path, const void *data, size_t dataLen, const char *dirname)
 {
   if (dirname)
@@ -488,7 +581,7 @@ int writeFile(const char *pathname, const char *dirname)
     free(buf);
   }
 
-  int numOfFilesHandled = handleFilesResponse("writeFile", dirname);
+  int numOfFilesHandled = handleFilesResponse(WRITE_FILE, "writeFile", dirname);
 
   return numOfFilesHandled >= 0 ? 0 : -1;
 }
@@ -509,7 +602,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
   AINZ(doRequest(APPEND_TO_FILE, absPath, buf, size), "appendToFile has failed", return -1;)
 
   free(absPath);
-  int numOfFilesHandled = handleFilesResponse("appendToFile", dirname);
+  int numOfFilesHandled = handleFilesResponse(APPEND_TO_FILE, "appendToFile", dirname);
 
   return numOfFilesHandled >= 0 ? 0 : -1;
 }
@@ -524,7 +617,7 @@ int readNFiles(int N, const char *dirname)
 
   AINZ(doRequest(READ_N_FILES, N), "readNFiles has failed", return -1;)
 
-  return handleFilesResponse("readNFiles", dirname);
+  return handleFilesResponse(READ_N_FILES, "readNFiles", dirname);
 }
 
 int lockFile(const char *pathname)
@@ -839,100 +932,8 @@ static int doRequest(int request, ...)
   return toRet;
 }
 
-// read a file from disk, path should be absolute
-static int readLocalFile(const char *path, void **bufPtr, size_t *size)
-{
-  AIN(path, "invalid path argument for readLocalFile", errno = EINVAL; return -1;)
-  AIN(bufPtr, "invalid bufPtr argument for readLocalFile", errno = EINVAL; return -1;)
-  AIN(size, "invalid size argument for readLocalFile", errno = EINVAL; return -1;)
-  FILE *fptr = NULL;
-  *bufPtr = NULL;
-
-  // control flow flags
-  int error = 0;
-  int closeFile = 0;
-  int freeBuf = 0;
-
-  // open the file
-  fptr = fopen(path, "r");
-  AIN(fptr, "cannot open the file in readLocalFile", error = 1;)
-
-  // go to the end of the file
-  if (!error)
-  {
-    AINZ(fseek(fptr, 0L, SEEK_END), "readLocalFile internal error: fseek", error = 1; closeFile = 1;)
-  }
-
-  // read its size
-  if (!error)
-  {
-    *size = ftell(fptr);
-    AINO(*size, "readLocalFile internal error: ftell", error = 1; closeFile = 1;)
-  }
-
-  // rewind the file pointer
-  if (!error)
-  {
-    errno = 0;
-    rewind(fptr);
-    if (errno)
-    {
-      error = 1;
-      closeFile = 1;
-      perror("readLocalFile internal error: rewind");
-    }
-  }
-
-  // alloc enough space
-  if (!error)
-  {
-    *bufPtr = malloc(sizeof(char) * (*size));
-    AIN(*bufPtr, "readLocalFile internal error: malloc", error = 1; closeFile = 1;)
-  }
-
-  // read the file into the buffer
-  if (!error)
-  {
-    int readSize = fread(*bufPtr, sizeof(char), *size, fptr);
-    if (readSize < *size)
-    {
-      perror("readLocalFile internal error: fread");
-      error = 1;
-      freeBuf = 1;
-    }
-
-    closeFile = 1;
-  }
-
-  if (closeFile)
-  {
-    errno = 0;
-    fclose(fptr);
-    if (errno)
-    {
-      perror("readLocalFile internal error: fclose");
-    }
-  }
-
-  if (freeBuf)
-  {
-    free(*bufPtr);
-    *bufPtr = NULL;
-  }
-
-  if (error)
-  {
-    return -1;
-  }
-  else
-  {
-    P(printf("successfully read the file %s from disk of size %d\n", path, *size));
-    return 0;
-  }
-}
-
 // handle the response when is composed by multiple files
-static int handleFilesResponse(const char *opS, const char *dirname)
+static int handleFilesResponse(int op, const char *opS, const char *dirname)
 {
 
   int error = 0;
@@ -972,7 +973,14 @@ static int handleFilesResponse(const char *opS, const char *dirname)
     // read the number of evicted files
     int numOfEvictedFiles = 0;
     AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleFilesResponse has failed", error = 1;)
-    P(printf("%d files has been evicted\n", numOfEvictedFiles))
+    if (op == APPEND_TO_FILE || op == WRITE_FILE)
+    {
+      P(printf("%d files has been evicted\n", numOfEvictedFiles))
+    }
+    if (op == READ_N_FILES)
+    {
+      P(printf("%d files has been read\n", numOfEvictedFiles))
+    }
 
     // get each evicted file and store it (if dirname is present)
     for (int i = 0; i < numOfEvictedFiles && !error; i++)
@@ -984,7 +992,14 @@ static int handleFilesResponse(const char *opS, const char *dirname)
 
       if (!error)
       {
-        P(printf("%.*s was evicted\n", (int)filepathLen, filepath);)
+        if (op == APPEND_TO_FILE || op == WRITE_FILE)
+        {
+          P(printf("%.*s was evicted\n", (int)filepathLen, filepath);)
+        }
+        if (op == READ_N_FILES)
+        {
+          P(printf("%.*s was read\n", (int)filepathLen, filepath);)
+        }
 
         // read if the file was empty
         int emptyFile;

@@ -40,6 +40,8 @@ extern int allowPrints;
 char *absolutify(const char *path);
 // write a file on disk
 int writeLocalFile(const char *path, const void *data, size_t dataLen, const char *dirname);
+// read a file from disk
+int readLocalFile(const char *path, void **bufPtr, size_t *size);
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime);
 int closeConnection(const char *sockname);

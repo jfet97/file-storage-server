@@ -24,6 +24,13 @@
 
 int timeToWaitBetweenConnections = 0; // set using option t
 
+typedef struct
+{
+  const char *dirname;
+  void *content;
+  size_t contentSize;
+} AppendOptionCallbackContext;
+
 #define AWAIT                                                              \
   {                                                                        \
     if (timeToWaitBetweenConnections)                                      \
@@ -121,6 +128,7 @@ static void writeOptionCallback(void *rawDirname, void *rawFilePath, int *error)
     }
   }
 }
+
 // used to read a list of files
 static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
 {
@@ -165,6 +173,34 @@ static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   }
 }
 
+// used to append on a list of files
+static void appendOptionCallback(void *rawCtx, void *rawFilePath, int *error)
+{
+
+  if (*error)
+  {
+    return;
+  }
+
+  AppendOptionCallbackContext *ctx = rawCtx;
+
+  // convert back to NULL if the rawDirname is an empty string
+  char *file = rawFilePath;
+
+  errno = 0;
+
+  // try to append to the file
+  AWAIT
+  appendToFile(file, ctx->content, ctx->contentSize, ctx->dirname);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+
+// used to lock a list of files
 static void lockOptionCallback(void *rawFilePath, int *error)
 {
   if (*error)
@@ -186,6 +222,8 @@ static void lockOptionCallback(void *rawFilePath, int *error)
     *error = errno;
   }
 }
+
+// used to unlock a list of files
 static void unlockOptionCallback(void *rawFilePath, int *error)
 {
   if (*error)
@@ -207,6 +245,8 @@ static void unlockOptionCallback(void *rawFilePath, int *error)
     *error = errno;
   }
 }
+
+// used to remove a list of files
 static void removeOptionCallback(void *rawFilePath, int *error)
 {
   if (*error)
@@ -230,8 +270,7 @@ static void removeOptionCallback(void *rawFilePath, int *error)
 }
 
 // read *nPtr files recursively from a directory
-static int
-readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
+static int readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
 {
 
   AAIN(readFiles, "readFiles is NULL in readNFilesFromDir", return -1;)
@@ -344,6 +383,7 @@ int main(int argc, char **argv)
              "Options:\n"
              "  -h,\tPrints the info message\n"
              "  -O,\tSets the dir for openFile eviction. If no dir is setted, the file/s will be lost"
+             "  -a,\tAccepts a list of files. The first will be a local source from where remotely append on the others"
              "  -f,\tSets the socket file path up to the specified socketPath\n"
              "  -w,\tSends to the server n files from the specified dirname directory. If n=0, sends every file in dirname\n"
              "  -W,\tSends to the server the specified files\n"
@@ -883,6 +923,103 @@ int main(int argc, char **argv)
 
       toRemoveFiles ? List_free(&toRemoveFiles, 0, NULL) : (void)NULL;
       paramClone ? free(paramClone) : (void)NULL;
+
+      break;
+    }
+    case 'a':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option a");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option a", stop = 1; error = 1; break;)
+
+      // will contains files to append on using option a
+      List_T appFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(appFiles, "internal error during the handling of option W", puts(List_getErrorMessage(error)); error = 1;)
+
+      // the first file path is the on from which the content will be read to be appendend
+      // on the other files on the list
+      const char *from = NULL;
+      if (!error)
+      {
+        from = strtok(paramClone, ",");
+
+        const char *token = strtok(NULL, ",");
+        if (token == NULL)
+        {
+          puts("wrong usage of option a, the list of files to append on is empty");
+          error = 1;
+        }
+
+        while (token && !error)
+        {
+          List_insertHead(appFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option a");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      // check if -D was used as the next option
+      const char *paramD = NULL;
+      if (!error)
+      {
+        if (p->next && p->next->op == 'D')
+        {
+          // skip it in the next iteration
+          p = p->next;
+          // retrieve the dirname where to store the evicted files
+          paramD = p->param;
+          if (paramD == NULL)
+          {
+            // it's not a big trouble, we can go on
+            puts("Wrong usage of -D option: the argument is missing");
+          }
+        }
+      }
+
+      void *fromContent = NULL;
+      size_t fromSize = 0;
+      if (!error)
+      {
+        int r = readLocalFile(from, &fromContent, &fromSize);
+        if (r == -1)
+        {
+          perror("internal error during the handling of option a");
+          error = 1;
+        }
+      }
+
+      if (!error)
+      {
+        AppendOptionCallbackContext ctx;
+        ctx.content = fromContent;
+        ctx.contentSize = fromSize;
+        ctx.dirname = paramD;
+        List_forEachWithContext(appFiles, appendOptionCallback, &ctx, &error);
+      }
+
+      appFiles ? List_free(&appFiles, 0, NULL) : (void)NULL;
+      paramClone ? free(paramClone) : (void)NULL;
+      fromContent ? free(fromContent) : (void)NULL;
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
 
       break;
     }
