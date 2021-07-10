@@ -71,8 +71,6 @@ main-d: main.c simple-queue-d config-parser-d logger-d communication-d file-syst
 
 clean:
 	rm -rf $(BUILDDIR)
-	rm -f ./log.txt
-	rm -f ./mysocket
 	cd ../simple-queue && make clean
 	cd ../config-parser && make clean
 	cd ../logger && make clean

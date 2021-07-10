@@ -19,7 +19,7 @@ all: $(TARGET)
 
 d: main-d
 
-api:
+api-a:
 	cd ./api/ && $(MAKE) all
 
 clp:
@@ -37,19 +37,18 @@ list:
 list-d:
 	cd ../list/ && $(MAKE) debug
 
-bin/main: main.c api clp list
-	(mkdir bin || true)
-	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser ../list/ -L../list/ -llist -o $@
+communication:
+	cd ../communication/ && $(MAKE) all
 
-main-d: main.c api-d clp-d list-d
+communication-d:
+	cd ../communication/ && $(MAKE) debug
+
+bin/main: main.c api-a clp list communication 
 	(mkdir bin || true)
-	((cd bin && mkdir source) || true)
-	((cd bin && cd source && mkdir inner) || true)
-	cd bin && cd source && touch test1.txt && echo "prova1 prova1" >> test1.txt
-	cd bin && cd source && touch test2.txt && echo "prova2 prova2" >> test2.txt
-	cd bin && cd source && touch test3.txt && echo "prova3 prova3" >> test3.txt
-	cd bin && cd source && cd inner && touch test4.txt && echo "prova4 prova4" >> test4.txt
-	cd bin && cd source && cd inner && touch test5.txt && echo "prova5 prova5" >> test5.txt
+	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser -I ../list/ -L../list/ -llist -o $(TARGET)
+
+main-d: main.c api-d clp-d list-d communication-d
+	(mkdir bin || true)
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser -I ../list/ -L../list/ -llist -o $(TARGET)
 
 clean:
@@ -58,4 +57,5 @@ clean:
 	rm -f libapi.a
 	cd ./api && make clean
 	cd ../command-line-parser && make clean
+	cd ../communication && make clean
 	cd ../list && make clean
