@@ -183,6 +183,7 @@ static void end()
   {
     // remove the socket file
     remove(sockname);
+    free(SOCKNAME);
   }
   puts("Goodbye, cruel world....");
 }
@@ -321,12 +322,11 @@ static void *worker(void *args)
   int toBreak = 0;
 
   while (!toBreak)
-  { // TODO: stop se flag
+  {
     // get a file descriptor
     int *fdPtr = SimpleQueue_dequeue(sq, 1, &error);
     if (error)
     {
-      // puts(SimpleQueue_getErrorMessage(error));
       toBreak = 1;
     }
     else
@@ -365,7 +365,6 @@ static void *worker(void *args)
         id.id = fd;
 
         switch (op)
-        // TODO: aggiungi i log
         {
         case OPEN_FILE:
         {
@@ -890,13 +889,15 @@ int main(int argc, char **argv)
   // read the configurations file
 
   // - socket file name
-  SOCKNAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
+  char *SOCK_NAME = ConfigParser_getValue(parser, "SOCKNAME", &error);
   if (error)
   {
     puts(ConfigParser_getErrorMessage(error));
     exit(EXIT_FAILURE);
   }
-  AAIN(SOCKNAME, "invalid SOCKNAME setting");
+  AAIN(SOCK_NAME, "invalid SOCKNAME setting");
+  SOCKNAME = strdup(SOCK_NAME);
+  AAIN(SOCKNAME, "internal strdup error");
 
   // - number of workers
   char *_N_OF_WORKERS = ConfigParser_getValue(parser, "N_OF_WORKERS", &error);
