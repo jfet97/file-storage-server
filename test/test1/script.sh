@@ -24,7 +24,7 @@ pwd
 bin/main -h
 
 # CLIENT 1
-bin/main -f ../server/bin/mysocket -w ../ -p
+bin/main -f ../server/bin/mysocket -w ../test/local-file-system -D ../test/test1/clients/evicted -p
 
 # kill server
 kill -2 $SERVER_PID

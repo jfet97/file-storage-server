@@ -56,4 +56,6 @@ bin/
 
 .vscode
 
-*/log.txt
+*log.txt
+
+clients/
