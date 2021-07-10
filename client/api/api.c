@@ -258,6 +258,99 @@ int writeLocalFile(const char *path, const void *data, size_t dataLen, const cha
   return 0;
 }
 
+/* Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifdef WIN32
+#define IS_SLASH(s) ((s == '/') || (s == '\\'))
+#else
+#define IS_SLASH(s) (s == '/')
+#endif
+
+static void ap_getparents(char *name)
+{
+  char *next;
+  int l, w, first_dot;
+
+  /* Four paseses, as per RFC 1808 */
+  /* a) remove ./ path segments */
+  for (next = name; *next && (*next != '.'); next++)
+  {
+  }
+
+  l = w = first_dot = next - name;
+  while (name[l] != '\0')
+  {
+    if (name[l] == '.' && IS_SLASH(name[l + 1]) && (l == 0 || IS_SLASH(name[l - 1])))
+      l += 2;
+    else
+      name[w++] = name[l++];
+  }
+
+  /* b) remove trailing . path, segment */
+  if (w == 1 && name[0] == '.')
+    w--;
+  else if (w > 1 && name[w - 1] == '.' && IS_SLASH(name[w - 2]))
+    w--;
+  name[w] = '\0';
+
+  /* c) remove all xx/../ segments. (including leading ../ and /../) */
+  l = first_dot;
+
+  while (name[l] != '\0')
+  {
+    if (name[l] == '.' && name[l + 1] == '.' && IS_SLASH(name[l + 2]) && (l == 0 || IS_SLASH(name[l - 1])))
+    {
+      int m = l + 3, n;
+
+      l = l - 2;
+      if (l >= 0)
+      {
+        while (l >= 0 && !IS_SLASH(name[l]))
+          l--;
+        l++;
+      }
+      else
+        l = 0;
+      n = l;
+      while ((name[n] = name[m]))
+        (++n, ++m);
+    }
+    else
+      ++l;
+  }
+
+  /* d) remove trailing xx/.. segment. */
+  if (l == 2 && name[0] == '.' && name[1] == '.')
+    name[0] = '\0';
+  else if (l > 2 && name[l - 1] == '.' && name[l - 2] == '.' && IS_SLASH(name[l - 3]))
+  {
+    l = l - 4;
+    if (l >= 0)
+    {
+      while (l >= 0 && !IS_SLASH(name[l]))
+        l--;
+      l++;
+    }
+    else
+      l = 0;
+    name[l] = '\0';
+  }
+}
+
 // if path is a relative path, transform it into an absolute one
 char *absolutify(const char *path)
 {
@@ -277,6 +370,8 @@ char *absolutify(const char *path)
     char cwd[PATH_MAX];
     AIN(getcwd(cwd, sizeof(cwd)), "getcwd has failed in absolutify", free(toRet); toRet = NULL; return NULL;)
     snprintf(toRet, PATH_MAX + 1, "%s/%s", cwd, path);
+    // resolve ../ and ./ in a path
+    ap_getparents(toRet);
   }
 
   return toRet;

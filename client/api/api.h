@@ -1,6 +1,7 @@
 #ifndef _CLIENT_SERVER_API_
 #define _CLIENT_SERVER_API_
 
+#include <limits.h>
 #include <stddef.h>
 #include <sys/syscall.h>
 #include <limits.h>
