@@ -323,6 +323,11 @@ void Logger_log(const char *toLog, size_t len, int *error)
         })
     }
 
+    if (local_time)
+    {
+        free(local_time);
+    }
+
     error && (*error = errToSet);
 }
 
