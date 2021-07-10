@@ -223,6 +223,29 @@ static void lockOptionCallback(void *rawFilePath, int *error)
   }
 }
 
+// used to close a list of files
+static void closeOptionCallback(void *rawFilePath, int *error)
+{
+  if (*error)
+  {
+    return;
+  }
+
+  char *file = rawFilePath;
+
+  errno = 0;
+
+  // try to close the file
+  AWAIT
+  closeFile(file);
+
+  // if the error is different from op. not permitted, report it
+  if (errno != EPERM)
+  {
+    *error = errno;
+  }
+}
+
 // used to unlock a list of files
 static void unlockOptionCallback(void *rawFilePath, int *error)
 {
@@ -394,6 +417,7 @@ int main(int argc, char **argv)
              "  -t,\tSpecifies the time between two consecutive requests to the server\n"
              "  -l,\tLocks the specified files\n"
              "  -u,\tUnlocks the specified files\n"
+             "  -s,\tClose the specified files\n"
              "  -c,\tRemoves the specified files from the server\n"
              "  -p,\tPrints information about operation performed on the server\n",
              argv[0], argv[0]);
@@ -926,6 +950,62 @@ int main(int argc, char **argv)
 
       break;
     }
+    case 's':
+    {
+
+      if (!param)
+      {
+        puts("wrong usage of option s");
+        error = 1;
+        stop = 1;
+        break;
+      }
+
+      // clone the param string
+      char *paramClone = strdup(param);
+      AAIN(paramClone, "strdup has failed during the handling of option s", stop = 1; error = 1; break;)
+
+      // will contains files to close using option s
+      List_T toCloseFiles = List_create(NULL, NULL, NULL, &error);
+      AAIN(toCloseFiles, "internal error during the handling of option s", puts(List_getErrorMessage(error)); error = 1;)
+
+      // get the files' paths
+      if (!error)
+      {
+        const char *token = strtok(paramClone, ",");
+        while (token && !error)
+        {
+          List_insertHead(toCloseFiles, (void *)token, &error);
+          if (error)
+          {
+            puts("internal error during the handling of option s");
+          }
+          else
+          {
+            token = strtok(NULL, ",");
+          }
+        }
+      }
+
+      if (!error)
+      {
+        List_forEach(toCloseFiles, closeOptionCallback, &error);
+      };
+
+      if (error && error != EPERM)
+      {
+        stop = 1;
+      }
+
+      toCloseFiles ? List_free(&toCloseFiles, 0, NULL) : (void)NULL;
+      paramClone ? free(paramClone) : (void)NULL;
+
+      break;
+    }
+
+
+
+
     case 'a':
     {
 
