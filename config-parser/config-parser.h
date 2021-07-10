@@ -14,7 +14,7 @@ typedef struct ConfigParser *ConfigParser;
 
 ConfigParser ConfigParser_parse(const char *path, int *error);
 void ConfigParser_delete(ConfigParser *parserPtr, int *error);
-char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, size_t len, int *error);
+char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, int *error);
 void ConfigParser_printConfigs(ConfigParser parserPtr, int *error);
 const char *ConfigParser_getErrorMessage(int errorCode);
 #endif

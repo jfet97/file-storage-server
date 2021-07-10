@@ -4,7 +4,7 @@
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -Wno-unused-value
-TARGET = libconfig-parser.a config-parser.o
+TARGET = libapi.a api.o
 
 debug: CFLAGS += -g
 debug: clean all
@@ -16,13 +16,14 @@ dist: clean all
 
 all: $(TARGET)
 
-libconfig-parser.a: config-parser.o
+libapi.a: api.o
 	ar rvs $@ $<
 
-config-parser.o: config-parser.c config-parser.h
+communication:
+	cd ../../communication/ && $(MAKE) all
 
-main: ../config-parser.c
-	$(CC) $(CFLAGS) $< -c -o $@
+api.o: api.c api.h communication
+	$(CC) $(CFLAGS) -I ../../communication/ -L../../communication/ -lcommunication  $< -c -o $@
 
 clean:
-	rm -f $(TARGET)
+	-rm -f $(TARGET)

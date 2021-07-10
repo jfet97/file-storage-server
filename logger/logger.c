@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include "logger.h"
 #include <limits.h>
 #include <stdio.h>
@@ -22,19 +21,19 @@
     }
 
 #define IS_NULL_DO(code, todo) \
-    if (code == NULL)             \
+    if (code == NULL)          \
     {                          \
         todo;                  \
     }
 
 #define IS_NEGATIVE_DO(code, todo) \
-    if (code < 0)                 \
+    if (code < 0)                  \
     {                              \
         todo;                      \
     }
 
 #define IS_NEGATIVE_DO_ELSE(code, todo, el_se) \
-    if (code < 0)                             \
+    if (code < 0)                              \
     {                                          \
         todo;                                  \
     }                                          \
@@ -55,7 +54,7 @@ struct Logger
 Logger logger = NULL;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-int realloca(char **buf, size_t newsize)
+static int realloca(char **buf, size_t newsize)
 {
     int toRet = 0;
 
@@ -77,10 +76,11 @@ void Logger_create(const char *path, int *error)
     int errToSet = 0;
     int hasLoggerLock = 1;
 
-    NON_ZERO_DO(pthread_mutex_lock(&lock), {
-        errToSet = E_LOG_MUTEX;
-        hasLoggerLock = 0;
-    })
+    NON_ZERO_DO(pthread_mutex_lock(&lock),
+                {
+                    errToSet = E_LOG_MUTEX;
+                    hasLoggerLock = 0;
+                })
 
     if (!errToSet && logger != NULL)
     {
@@ -118,7 +118,7 @@ void Logger_create(const char *path, int *error)
 
     if (!errToSet)
     {
-        logger->file = fopen(path, "a");
+        logger->file = fopen(path, "w");
         IS_NULL_DO(logger->file, {
             errToSet = E_LOG_FILE;
         })
@@ -126,18 +126,19 @@ void Logger_create(const char *path, int *error)
 
     if (hasLoggerLock && errToSet && errToSet != E_LOG_SINGLETON && errToSet != E_LOG_WRONG_INPUT)
     {
-        (logger && logger->log) ? free(logger->log) : NULL;
-        logger ? free(logger) : NULL;
+        (logger && logger->log) ? free(logger->log) : (void)NULL;
+        logger ? free(logger) : (void)NULL;
         logger = NULL;
     }
 
     if (hasLoggerLock)
     {
         hasLoggerLock = 0;
-        NON_ZERO_DO(pthread_mutex_unlock(&lock), {
-            errToSet = E_LOG_MUTEX;
-            hasLoggerLock = 1;
-        })
+        NON_ZERO_DO(pthread_mutex_unlock(&lock),
+                    {
+                        errToSet = E_LOG_MUTEX;
+                        hasLoggerLock = 1;
+                    })
     }
 
     error && (*error = errToSet);
@@ -155,10 +156,11 @@ void Logger_delete(int force_free, int *error)
     if (!errToSet)
     {
         hasLoggerLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&lock), {
-            errToSet = E_LOG_MUTEX;
-            hasLoggerLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&lock),
+                    {
+                        errToSet = E_LOG_MUTEX;
+                        hasLoggerLock = 0;
+                    })
     }
 
     if (hasLoggerLock)
@@ -171,10 +173,11 @@ void Logger_delete(int force_free, int *error)
 
         // chiudo anche se e' fallita la flush
         int closeFileSuccessfull = 1;
-        NON_ZERO_DO(fclose(logger->file), {
-            errToSet = E_LOG_FILE;
-            closeFileSuccessfull = 0;
-        })
+        NON_ZERO_DO(fclose(logger->file),
+                    {
+                        errToSet = E_LOG_FILE;
+                        closeFileSuccessfull = 0;
+                    })
 
         // non chiudo se non sono riuscito a chiudere il file
         // a meno che non sono forzato
@@ -219,10 +222,11 @@ void Logger_log(const char *toLog, size_t len, int *error)
     if (!errToSet)
     {
         hasLoggerLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&lock), {
-            errToSet = E_LOG_MUTEX;
-            hasLoggerLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&lock),
+                    {
+                        errToSet = E_LOG_MUTEX;
+                        hasLoggerLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -334,10 +338,11 @@ void Logger_flush(int *error)
     if (!errToSet)
     {
         hasLoggerLock = 1;
-        NON_ZERO_DO(pthread_mutex_lock(&lock), {
-            errToSet = E_LOG_MUTEX;
-            hasLoggerLock = 0;
-        })
+        NON_ZERO_DO(pthread_mutex_lock(&lock),
+                    {
+                        errToSet = E_LOG_MUTEX;
+                        hasLoggerLock = 0;
+                    })
     }
 
     if (hasLoggerLock)

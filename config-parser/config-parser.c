@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include "config-parser.h"
 #include <limits.h>
 #include <stdio.h>
@@ -41,7 +40,7 @@ struct ConfigParser
 // -------------------------------
 // INTERNALS
 
-int insert(InternalListNode **listPtr, InternalListNode *newNode)
+static int insert(InternalListNode **listPtr, InternalListNode *newNode)
 {
     int codeToRet = 0;
 
@@ -58,7 +57,7 @@ int insert(InternalListNode **listPtr, InternalListNode *newNode)
     return codeToRet;
 }
 
-void forceFree(InternalListNode **listPtr)
+static void forceFree(InternalListNode **listPtr)
 {
     if (listPtr && *listPtr)
     {
@@ -67,13 +66,13 @@ void forceFree(InternalListNode **listPtr)
     }
 }
 
-void *searchByKey(InternalListNode *list, const char *key)
+static void *searchByKey(InternalListNode *list, const char *key)
 {
     if (list == NULL)
     {
         return NULL;
     }
-    else if (list->key == key)
+    else if (strcmp(list->key, key) == 0)
     {
         return list->value;
     }
@@ -83,7 +82,7 @@ void *searchByKey(InternalListNode *list, const char *key)
     }
 }
 
-int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
+static int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
 {
     int errToSet = 0;
     int feofRes = 0;
@@ -192,8 +191,8 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
 
     if (errToSet)
     {
-        parser ? forceFree(&(parser->internal_list)) : NULL;
-        parser ? free(parser) : NULL;
+        parser ? forceFree(&(parser->internal_list)) : (void)NULL;
+        parser ? free(parser) : (void)NULL;
         parser = NULL;
     }
 
@@ -220,7 +219,7 @@ void ConfigParser_delete(ConfigParser *parserPtr, int *error)
     error && (*error = errToSet);
 }
 
-char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, size_t len, int *error)
+char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, int *error)
 {
 
     int errToSet = 0;
@@ -264,7 +263,7 @@ void ConfigParser_printConfigs(ConfigParser parserPtr, int *error)
     error && (*error = errToSet);
 }
 
-const char *logger_error_messages[] = {
+const char *config_parser_error_messages[] = {
     "",
     "config parser internal malloc error",
     "config parser internal file error",
@@ -276,5 +275,5 @@ const char *logger_error_messages[] = {
 
 const char *ConfigParser_getErrorMessage(int errorCode)
 {
-    return logger_error_messages[errorCode];
+    return config_parser_error_messages[errorCode];
 }

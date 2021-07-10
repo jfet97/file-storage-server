@@ -1,10 +1,13 @@
-# make -> compile all the binaries
+# make -> compile all the binaries 
 # make debug -> compile with debug symbol
 # make dist -> compile with compiler optimizations
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -Wno-unused-value
-TARGET = libconfig-parser.a config-parser.o
+TARGETS = libcommunication.a communication.o
+
+nosuppress: CFLAGS += -Wunused-value
+nosuppress: clean all
 
 debug: CFLAGS += -g
 debug: clean all
@@ -14,15 +17,13 @@ dist: clean all
 
 .PHONY: clean
 
-all: $(TARGET)
+all: $(TARGETS)
 
-libconfig-parser.a: config-parser.o
-	ar rvs $@ $<
+libcommunication.a: communication.o
+	 ar rvs $@ $<
 
-config-parser.o: config-parser.c config-parser.h
-
-main: ../config-parser.c
+communication.o: communication.c communication.h
 	$(CC) $(CFLAGS) $< -c -o $@
 
-clean:
-	rm -f $(TARGET)
+clean: 
+	-rm -f $(TARGETS)

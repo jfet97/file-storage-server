@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include "config-parser.h"
 #include <assert.h>
 #include <pthread.h>
@@ -25,7 +24,7 @@ int main(void)
 {
 
     int error;
-    ConfigParser parser = ConfigParser_parse("./config.txt", &error);
+    ConfigParser parser = ConfigParser_parse("../config.txt", &error);
     print(error);
 
     ConfigParser_printConfigs(parser, &error);

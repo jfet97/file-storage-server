@@ -1,5 +1,4 @@
-#define _GNU_SOURCE
-#define _POSIX_C_SOURCE 200112L
+#define _POSIX_C_SOURCE 200809L
 #include "file-system.h"
 #include <assert.h>
 #include <pthread.h>
@@ -129,6 +128,7 @@ void print(int *error)
 // non posso leggere un file lockato da un altro
 // non posso rimuovere un file che non ho lockato
 // posso chiudere un file lockato da altri
+// non posso aprire (indipendentemente dai flag) un file gia' aperto da me precedentemente e non chiuso
 
 int main(void)
 {

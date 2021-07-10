@@ -1,7 +1,7 @@
-#include <stddef.h>
-
 #ifndef COMMAND_LINE_PARSER__
 #define COMMAND_LINE_PARSER__
+
+#include <stddef.h>
 
 #define E_CLP_MALLOC 1
 #define E_CLP_NULL 2
