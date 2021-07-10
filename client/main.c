@@ -441,8 +441,8 @@ int main(int argc, char **argv)
              "  -u,\tUnlocks the specified files\n"
              "  -s,\tClose the specified files\n"
              "  -o,\tOpen the specified files without flags\n"
-             "  -e,\tOpen the specified files using the flag O_LOCK\n"
-             "  -n,\tOpen the specified files using the flag O_CREATE\n"
+             "  -e,\tOpen the specified files using the flag O_CREATE\n"
+             "  -n,\tOpen the specified files using the flag O_LOCK\n"
              "  -c,\tRemoves the specified files from the server\n"
              "  -p,\tPrints information about operation performed on the server\n",
              argv[0]);

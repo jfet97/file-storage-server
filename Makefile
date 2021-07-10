@@ -29,3 +29,6 @@ clean:
 
 test1: clean dist
 	(cd test/test1 && bash script.sh)
+
+test1-d: clean debug-d
+	(cd test/test1 && bash script.sh)

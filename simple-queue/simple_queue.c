@@ -160,6 +160,7 @@ static void List__free(SimpleNode **nodePtr)
     if (*nodePtr != NULL)
     {
         List__free(&(*nodePtr)->next);
+        free((*nodePtr)->element);
         SimpleNode_free(nodePtr);
     }
 }
@@ -416,6 +417,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 
     if (errToSet != E_SQ_NO_QUEUE && errToSet != E_SQ_QUEUE_DELETED)
     {
+
         free(queue_data);
         deleteByKey(&internal_queues_data_list, queue);
         List_free(&(*queuePtr)->queue);
