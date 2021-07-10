@@ -105,6 +105,12 @@ typedef struct
   FileSystem fs;
 } WorkerContext;
 
+typedef struct
+{
+  int fd;
+  int op; // the requested operation form client
+} SendFilesContext;
+
 // socket file name
 char *SOCKNAME = NULL;
 
@@ -282,19 +288,32 @@ static int setupServerSocket(char *sockname, int upm)
   return fd_skt;
 }
 
-// callback to send a list of evicted result files to a client
-void sendListOfFilesCallback(void *rawFd, void *rawRF, int *error)
+// callback to send a list of result files to a client
+void sendListOfFilesCallback(void *rawCtx, void *rawRF, int *error)
 {
   if (!(*error))
   {
+    SendFilesContext *ctx = rawCtx;
 
-    int fd = *(int *)rawFd;
+    int fd = ctx->fd;
+    int op = ctx->op;
     ResultFile rf = rawRF;
 
     // send the file's path
     AINZ(sendData(fd, rf->path, strlen(rf->path) + 1), "cannot respond to a client", *error = 1;)
 
-    // send a message to say if the evicted file was empty or not
+    char toLog[LOG_LEN] = {0};
+    if (op == READ_N_FILES)
+    {
+      sprintf(toLog, "File %s of size %d was read -", rf->path, rf->size);
+    }
+    if (op == WRITE_FILE || op == APPEND_TO_FILE)
+    {
+      sprintf(toLog, "File %s of size %d was evicted -", rf->path, rf->size);
+    }
+    LOG(toLog);
+
+    // send a message to say if the file was empty or not
     // send the file's content if it is not empty
     if (rf->size)
     {
@@ -410,6 +429,10 @@ static void *worker(void *args)
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
                 if (rf)
                 {
+                  char toLog[LOG_LEN] = {0};
+                  sprintf(toLog, "File %s of size %d was evicted -", rf->path, rf->size);
+                  LOG(toLog);
+
                   // and the evicted file, if any
                   int evicted = 1;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
@@ -481,6 +504,10 @@ static void *worker(void *args)
             {
               // in case of success send a resCode of 0
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
+
+              char toLog[LOG_LEN] = {0};
+              sprintf(toLog, "File %s of size %d was read -", rf->path, rf->size);
+              LOG(toLog);
 
               // send a message to say if the evicted file was empty or not
               // send the file's content if it is not empty
@@ -569,7 +596,10 @@ static void *worker(void *args)
                 AINZ(sendData(fd, &numOfEvictedFiles, sizeof(numOfEvictedFiles)), "cannot respond to a client", closeConnection = 1;)
 
                 // send each evicted file
-                List_forEachWithContext(evictedFiles, sendListOfFilesCallback, &fd, &error);
+                SendFilesContext ctx;
+                ctx.fd = fd;
+                ctx.op = op;
+                List_forEachWithContext(evictedFiles, sendListOfFilesCallback, &ctx, &error);
 
                 if (error)
                 {
@@ -628,7 +658,10 @@ static void *worker(void *args)
               AINZ(sendData(fd, &numOfReadFiles, sizeof(numOfReadFiles)), "cannot respond to a client", closeConnection = 1;)
 
               // send each read file
-              List_forEachWithContext(rfs, sendListOfFilesCallback, &fd, &error);
+              SendFilesContext ctx;
+              ctx.fd = fd;
+              ctx.op = op;
+              List_forEachWithContext(rfs, sendListOfFilesCallback, &ctx, &error);
 
               if (error)
               {
@@ -1121,7 +1154,7 @@ int main(int argc, char **argv)
         if (FD_ISSET(fd, &rdset))
         {
           // refuse new connection when a signal has arrived
-          if (fd == fd_skt && signal == 0) // new connection
+          if (fd == fd_skt && signal == 0)
           {
             // accept handling
             int fd_c = accept(fd_skt, NULL, 0);
@@ -1195,6 +1228,12 @@ int main(int argc, char **argv)
               perror("something bad has appened trying to read from masterSigHandlerPipe");
               exit(EXIT_FAILURE);
             }
+            else
+            {
+              char toLog[LOG_LEN] = {0};
+              sprintf(toLog, "Signal %d has been detected -", signal);
+              LOG(toLog)
+            }
           }
           else
           { // if an already known client (fd) has a new request, send it to the workers
@@ -1209,6 +1248,7 @@ int main(int argc, char **argv)
               fd_num--;
             }
 
+            // control flow flags
             int shouldClose = 0;
             int shouldExit = 0;
 
@@ -1247,21 +1287,20 @@ int main(int argc, char **argv)
           }
         }
       }
-    } /* chiude while(1) */
+    } // close while(1)
   }
+
+  LOG("Shutdown process initiated")
 
   // ----------------------------------------------------------------------
 
-  if (signal)
+  // delete the queue, signaling to the workers
+  // that they must return
+  SimpleQueue_delete(&sq, &error);
+  if (error)
   {
-    // delete the queue, signaling to the workers
-    // that they must return
-    SimpleQueue_delete(&sq, &error);
-    if (error)
-    {
-      puts(SimpleQueue_getErrorMessage(error));
-      error = 0;
-    }
+    puts(SimpleQueue_getErrorMessage(error));
+    error = 0;
   }
 
   // ----------------------------------------------------------------------
@@ -1273,6 +1312,7 @@ int main(int argc, char **argv)
     if (errno)
     {
       perror("something has gone wrong in pthread_join - skipping join process");
+      LOG("Something has gone wrong in pthread_join - skipping join process")
       break;
     }
   }
