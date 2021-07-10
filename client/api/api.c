@@ -7,6 +7,12 @@
 #define O_CREATE 0x01
 #define O_LOCK 0x02
 
+#define P(p)       \
+  if (allowPrints) \
+  {                \
+    p;             \
+  }
+
 // will be fulfilled in openConnection
 char socketname[UNIX_PATH_MAX] = {0};
 int fd_skt = -1;
@@ -80,6 +86,9 @@ static int handleFilesResponse(const char *, const char *);
 // if it will be provided, this variabile will contain the path of the dir
 // used to store the evicted file from the server when openFile is called (set using -O option)
 char *homeDirEvictedFiles = NULL;
+
+// if 1, log strings will be outputted to stdout
+int allowPrints = 0;
 
 // store a file using dirname as root, if it is not null
 // otherwise it has no effects
@@ -183,6 +192,8 @@ char *absolutify(const char *path)
 
 int openConnection(const char *sockname, int msec, const struct timespec abstime)
 {
+  P(puts("openConnection operation has been requested"))
+
   // create the socket, stored globally
   fd_skt = socket(AF_UNIX, SOCK_STREAM, 0);
 
@@ -242,6 +253,7 @@ int closeConnection(const char *sockname)
 {
   // input and status check
   CHECK_FD_SK(sockname)
+  P(puts("closeConnection operation has been requested"))
 
   int toRet = close(fd_skt);
 
@@ -258,12 +270,14 @@ int openFile(const char *pathname, int flags)
 {
   CHECK_FD
   int error = 0;
+  P(puts("openFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for openFile", errno = EINVAL; return -1;)
   if (flags < 0 || flags > 3)
   {
-    puts("invalid flags");
+    P(puts("invalid flags");)
     errno = EINVAL;
     return -1;
   }
@@ -278,7 +292,7 @@ int openFile(const char *pathname, int flags)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "openFile has failed", error = 1;)
-    printf("remote openFile has received %d as result code\n", resCode);
+    P(printf("remote openFile has received %d as result code\n", resCode);)
   }
 
   if (!error)
@@ -293,7 +307,7 @@ int openFile(const char *pathname, int flags)
       // print the error message
       if (!error)
       {
-        printf("%.*s\n", (int)errMessLen, errMess);
+        P(printf("%.*s\n", (int)errMessLen, errMess);)
       }
 
       if (errMess)
@@ -321,7 +335,7 @@ int openFile(const char *pathname, int flags)
 
         if (!error)
         {
-          printf("%.*s was evicted\n", (int)filepathLen, filepath);
+          P(printf("%.*s was evicted\n", (int)filepathLen, filepath);)
 
           // read if the file was empty
           int emptyFile;
@@ -330,7 +344,7 @@ int openFile(const char *pathname, int flags)
           // if it was empty, write an empty file
           if (!error && emptyFile)
           {
-            puts("the file was empty");
+            P(puts("the file was empty");)
             AINZ(writeLocalFile(filepath, NULL, 0, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
           }
           // otherwise, read its content
@@ -343,7 +357,7 @@ int openFile(const char *pathname, int flags)
 
             if (!error)
             {
-              printf("%.*s\n", (int)dataLen, (char *)data);
+              P(printf("%.*s\n", (int)dataLen, (char *)data);)
               AINZ(writeLocalFile(filepath, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
             }
 
@@ -362,7 +376,7 @@ int openFile(const char *pathname, int flags)
       // if no file was evicted do nothing
       else if (!error && !evicted)
       {
-        puts("no file was evicted");
+        P(puts("no file was evicted");)
       }
     }
   }
@@ -374,6 +388,8 @@ int openFile(const char *pathname, int flags)
 int readFile(const char *pathname, void **buf, size_t *size)
 {
   CHECK_FD
+  P(puts("readFile operation has been requested on file:"))
+  P(puts(pathname))
 
   int error = 0;
 
@@ -391,7 +407,7 @@ int readFile(const char *pathname, void **buf, size_t *size)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "readFile has failed", error = 1;)
-    printf("remote readFile has received %d as result code\n", resCode);
+    P(printf("remote readFile has received %d as result code\n", resCode);)
   }
 
   if (!error && resCode == -1)
@@ -404,7 +420,7 @@ int readFile(const char *pathname, void **buf, size_t *size)
     // print the error message
     if (!error)
     {
-      printf("%.*s\n", (int)errMessLen, errMess);
+      P(printf("%.*s\n", (int)errMessLen, errMess);)
     }
 
     if (errMess)
@@ -425,7 +441,7 @@ int readFile(const char *pathname, void **buf, size_t *size)
     // if it was empty, write NULL
     if (!error && emptyFile)
     {
-      puts("the file was empty");
+      P(puts("the file was empty");)
       *size = 0;
       *buf = NULL;
     }
@@ -443,6 +459,8 @@ int readFile(const char *pathname, void **buf, size_t *size)
 int writeFile(const char *pathname, const char *dirname)
 {
   CHECK_FD
+  P(puts("writeFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for writeFile", errno = EINVAL; return -1;)
@@ -474,6 +492,8 @@ int writeFile(const char *pathname, const char *dirname)
 int appendToFile(const char *pathname, void *buf, size_t size, const char *dirname)
 {
   CHECK_FD
+  P(puts("appendToFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for appendToFile", errno = EINVAL; return -1;)
@@ -493,6 +513,7 @@ int appendToFile(const char *pathname, void *buf, size_t size, const char *dirna
 int readNFiles(int N, const char *dirname)
 {
   CHECK_FD
+  P(puts("readNFiles operation has been requested"))
 
   // check arguments
   AIN(dirname, "invalid dirname argument for readNFiles", errno = EINVAL; return -1;)
@@ -506,6 +527,8 @@ int lockFile(const char *pathname)
 {
   CHECK_FD
   int error = 0;
+  P(puts("lockFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for lockFile", errno = EINVAL; return -1;)
@@ -521,7 +544,7 @@ int lockFile(const char *pathname)
 
   if (!error)
   {
-    printf("remote lockFile has received %d as result code\n", resCode);
+    P(printf("remote lockFile has received %d as result code\n", resCode);)
 
     if (resCode == -1)
     {
@@ -533,7 +556,7 @@ int lockFile(const char *pathname)
       // print the error message
       if (!error)
       {
-        printf("%.*s\n", (int)errMessLen, errMess);
+        P(printf("%.*s\n", (int)errMessLen, errMess);)
       }
 
       if (errMess)
@@ -561,6 +584,8 @@ int unlockFile(const char *pathname)
 {
   CHECK_FD
   int error = 0;
+  P(puts("unlockFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for unlockFile", errno = EINVAL; return -1;)
@@ -576,7 +601,7 @@ int unlockFile(const char *pathname)
 
   if (!error)
   {
-    printf("remote unlockFile has received %d as result code\n", resCode);
+    P(printf("remote unlockFile has received %d as result code\n", resCode);)
 
     if (resCode == -1)
     {
@@ -588,7 +613,7 @@ int unlockFile(const char *pathname)
       // print the error message
       if (!error)
       {
-        printf("%.*s\n", (int)errMessLen, errMess);
+        P(printf("%.*s\n", (int)errMessLen, errMess);)
       }
 
       if (errMess)
@@ -616,6 +641,8 @@ int closeFile(const char *pathname)
 {
   CHECK_FD
   int error = 0;
+  P(puts("closeFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for closeFile", errno = EINVAL; return -1;)
@@ -631,7 +658,7 @@ int closeFile(const char *pathname)
 
   if (!error)
   {
-    printf("remote closeFile has received %d as result code\n", resCode);
+    P(printf("remote closeFile has received %d as result code\n", resCode);)
 
     if (resCode == -1)
     {
@@ -643,7 +670,7 @@ int closeFile(const char *pathname)
       // print the error message
       if (!error)
       {
-        printf("%.*s\n", (int)errMessLen, errMess);
+        P(printf("%.*s\n", (int)errMessLen, errMess);)
       }
 
       if (errMess)
@@ -671,6 +698,8 @@ int removeFile(const char *pathname)
 {
   CHECK_FD
   int error = 0;
+  P(puts("removeFile operation has been requested on file:"))
+  P(puts(pathname))
 
   // check arguments
   AIN(pathname, "invalid pathname argument for removeFile", errno = EINVAL; return -1;)
@@ -686,7 +715,7 @@ int removeFile(const char *pathname)
 
   if (!error)
   {
-    printf("remote removeFile has received %d as result code\n", resCode);
+    P(printf("remote removeFile has received %d as result code\n", resCode);)
 
     if (resCode == -1)
     {
@@ -698,7 +727,7 @@ int removeFile(const char *pathname)
       // print the error message
       if (!error)
       {
-        printf("%.*s\n", (int)errMessLen, errMess);
+        P(printf("%.*s\n", (int)errMessLen, errMess);)
       }
 
       if (errMess)
@@ -790,7 +819,7 @@ static int doRequest(int request, ...)
 
   if (toErrno)
   {
-    printf("the request that has failed is %s\n", fromRequestToString(request));
+    P(printf("the request that has failed is %s\n", fromRequestToString(request));)
   }
 
   va_end(valist);
@@ -885,6 +914,7 @@ static int readLocalFile(const char *path, void **bufPtr, size_t *size)
   }
   else
   {
+    P(printf("successfully read the file %s from disk of size %d\n", path, *size));
     return 0;
   }
 }
@@ -900,7 +930,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "handleFilesResponse has failed", error = 1;)
-    printf("remote %s has received %d as result code\n", opS, resCode);
+    P(printf("remote %s has received %d as result code\n", opS, resCode);)
   }
 
   if (!error && resCode == -1)
@@ -913,7 +943,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
     // print the error message
     if (!error)
     {
-      printf("%.*s\n", (int)errMessLen, errMess);
+      P(printf("%.*s\n", (int)errMessLen, errMess);)
     }
 
     if (errMess)
@@ -930,6 +960,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
     // read the number of evicted files
     int numOfEvictedFiles = 0;
     AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleFilesResponse has failed", error = 1;)
+    P(printf("%d files has been evicted\n", numOfEvictedFiles))
 
     // get each evicted file and store it (if dirname is present)
     for (int i = 0; i < numOfEvictedFiles && !error; i++)
@@ -941,7 +972,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
 
       if (!error)
       {
-        printf("%.*s was evicted\n", (int)filepathLen, filepath);
+        P(printf("%.*s was evicted\n", (int)filepathLen, filepath);)
 
         // read if the file was empty
         int emptyFile;
@@ -950,7 +981,7 @@ static int handleFilesResponse(const char *opS, const char *dirname)
         // if it was empty, write an empty file
         if (!error && emptyFile)
         {
-          puts("the file was empty");
+          P(puts("the file was empty");)
           AINZ(writeLocalFile(filepath, NULL, 0, dirname), "write process in handleFilesResponse to local disk has failed", ;)
         }
         // otherwise, read its content
@@ -960,10 +991,10 @@ static int handleFilesResponse(const char *opS, const char *dirname)
           void *data;
           size_t dataLen;
           AINZ(getData(fd_skt, &data, &dataLen, 1), "handleFilesResponse has failed", error = 1;)
+          P(printf("file size is %d\n", dataLen))
 
           if (!error)
           {
-            printf("%.*s\n", (int)dataLen, (char *)data);
             AINZ(writeLocalFile(filepath, data, dataLen, dirname), "write process in handleFilesResponse to local disk has failed", ;)
           }
 

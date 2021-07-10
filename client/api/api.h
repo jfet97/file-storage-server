@@ -26,7 +26,12 @@
 #include "communication.h"
 #include <stdarg.h>
 
+// if it will be provided, this variabile will contain the path of the dir
+// used to store the evicted file from the server when openFile is called (set using -O option)
 extern char *homeDirEvictedFiles;
+
+// if 1, log strings will be outputted to stdout
+extern int allowPrints;
 
 // make a relative path absolute (using cwd)
 char *absolutify(const char *path);

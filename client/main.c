@@ -124,7 +124,6 @@ static void readOptionCallback(void *rawDirname, void *rawFilePath, int *error)
   void *buf = NULL;
   size_t size;
   readFile(file, &buf, &size);
-  puts(file);
 
   // if the operation has ended successfully
   if (errno == 0)
@@ -343,6 +342,7 @@ int main(int argc, char **argv)
   }
 
   // check if option f is the first option and check if options t and p are used only one time
+  // set option t and option p
   int tTimes = 0;
   int fTimes = 0;
   int pTimes = 0;
@@ -371,6 +371,8 @@ int main(int argc, char **argv)
     if (op == 'p')
     {
       pTimes++;
+
+      allowPrints = 1;
     }
   }
   if (!fFirst)
@@ -710,7 +712,10 @@ int main(int argc, char **argv)
       }
       else
       {
-        printf("%d files has been read\n", r);
+        if (allowPrints)
+        {
+          printf("%d files has been read\n", r);
+        }
       }
 
       break;
