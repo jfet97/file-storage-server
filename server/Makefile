@@ -4,7 +4,7 @@
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
-TARGET = bin/main
+TARGET = bin/server
 BUILDDIR = bin
 
 debug: CFLAGS += -g
@@ -17,7 +17,7 @@ dist: clean all
 
 all: $(TARGET)
 
-d: main-d
+d: server-d
 
 simple-queue:
 	cd ../simple-queue/ && $(MAKE) all
@@ -61,11 +61,11 @@ hashmap:
 hashmap-d:
 	cd ../hashmap && $(MAKE) debug
 
-bin/main: main.c simple-queue config-parser logger communication file-system list hashmap
+bin/server: server.c simple-queue config-parser logger communication file-system list hashmap
 	(mkdir bin || true)
 	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $@
 
-main-d: main.c simple-queue-d config-parser-d logger-d communication-d file-system-d list-d hashmap-d
+server-d: server.c simple-queue-d config-parser-d logger-d communication-d file-system-d list-d hashmap-d
 	(mkdir bin || true)
 	$(CC) $(CFLAGS) $< -I ../simple-queue/ -L ../simple-queue/ -lsimple_queue -I ../config-parser/ -L ../config-parser/ -lconfig-parser -I ../logger/ -L ../logger/ -llogger -I ../communication/ -L ../communication/ -lcommunication -I ../file-system/ -L ../file-system/ -lfile-system -I ../hashmap/ -I ../list/ -L../hashmap/ -licl_hash -L../list/ -llist -o $(TARGET)
 

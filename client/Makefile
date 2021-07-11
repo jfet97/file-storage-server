@@ -4,7 +4,7 @@
 # make clean -> remove the binaries
 
 CFLAGS += -std=c99 -Wall -pedantic -pthread -Wno-unused-value
-TARGET = bin/main
+TARGET = bin/client
 BUILDDIR = bin
 
 debug: CFLAGS += -g
@@ -17,7 +17,7 @@ dist: clean all
 
 all: $(TARGET)
 
-d: main-d
+d: client-d
 
 api-a:
 	cd ./api/ && $(MAKE) all
@@ -43,11 +43,11 @@ communication:
 communication-d:
 	cd ../communication/ && $(MAKE) debug
 
-bin/main: main.c api-a clp list communication 
+bin/client: client.c api-a clp list communication 
 	(mkdir bin || true)
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser -I ../list/ -L../list/ -llist -o $(TARGET)
 
-main-d: main.c api-d clp-d list-d communication-d
+client-d: client.c api-d clp-d list-d communication-d
 	(mkdir bin || true)
 	$(CC) $< $(CFLAGS) -I ./api/ -L ./api/ -lapi -I ../communication -L ../communication/ -lcommunication -I ../command-line-parser -L ../command-line-parser/ -lcommand-line-parser -I ../list/ -L../list/ -llist -o $(TARGET)
 

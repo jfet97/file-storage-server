@@ -78,20 +78,21 @@
     perror(S);       \
   }
 
-#define LOG(M)                         \
+#define FLUSH_LOGGER                   \
   {                                    \
     int e = 0;                         \
-    Logger_log(M, strlen(M), &e);      \
+    Logger_flush(&e);                  \
     if (e)                             \
     {                                  \
       puts(Logger_getErrorMessage(e)); \
     }                                  \
   }
 
-#define FLUSH_LOGGER                   \
+#define LOG(M)                         \
   {                                    \
     int e = 0;                         \
-    Logger_flush(&e);                  \
+    Logger_log(M, strlen(M), &e);      \
+    FLUSH_LOGGER                       \
     if (e)                             \
     {                                  \
       puts(Logger_getErrorMessage(e)); \
@@ -115,6 +116,7 @@ typedef struct
 {
   int pipe; // pipe with main thread
   FileSystem fs;
+  int resCode;
 } EvictClientCallbackContext;
 
 // socket file name
@@ -188,17 +190,24 @@ static void *sig_handler(void *arg)
 }
 
 static int evictClient(int, FileSystem, int);
-// callback used to notify a list of fds because they have got a lock
+// callback used to notify a list of fds because they may have got a lock
+// or may have lost it forever
 static void evictClientCallback(void *rawCtx, void *rawOid, int *error)
 {
   *error = 0;
   OwnerId *idWithLock = rawOid;
   EvictClientCallbackContext *ctx = rawCtx;
+  int resCode = ctx->resCode;
 
-  // this is the id (fd) of the client waiting for the lock on the pathname file that just got it
+  // this is the id (fd) of the client waiting for the lock on the pathname file
   // we have to signal to this client what has just happened
-  int resCode = 0;
   AINZ(sendData(idWithLock->id, &resCode, sizeof(resCode)), "cannot respond to a client", *error = -1;)
+
+  if (resCode == -1)
+  {
+    // the client waits a message
+    AINZ(sendData(idWithLock->id, "file-system: file has been removed", strlen("file-system: file has been removed") + 1), "cannot respond to a client", *error = -1;)
+  }
 
   if (!*error)
   {
@@ -210,18 +219,18 @@ static void evictClientCallback(void *rawCtx, void *rawOid, int *error)
   }
   else
   {
+    // evict the client from the file-system
+    if (evictClient(idWithLock->id, ctx->fs, ctx->pipe) == -1)
+    {
+      perror("error during the eviction of a client");
+    }
+
     // close connection
     int minusOne = -1;
     HANDLE_WRNS(writen(ctx->pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
                 {
                   perror("failed communication with main thread");
                 });
-
-    // evict the client from the file-system
-    if (evictClient(idWithLock->id, ctx->fs, ctx->pipe) == -1)
-    {
-      perror("error during the eviction of a client");
-    }
 
     CLOSE(idWithLock->id, "cannot close the communication with a client");
   }
@@ -233,19 +242,26 @@ static int evictClient(int fd, FileSystem fs, int pipeWithMainThread)
   OwnerId id;
   id.id = fd;
 
+  char toLog[LOG_LEN];
+  sprintf(toLog, "Evicting client (fd) %d -", fd);
+  LOG(toLog);
+
   List_T lockers = FileSystem_evictClient(fs, id, &error);
   if (error)
   {
     perror(FileSystem_getErrorMessage(error));
+    LOG(FileSystem_getErrorMessage(error));
   }
 
   if (!error && lockers)
   {
+
     // lockers is a list full of fds of clients that have got locks on various files
     // because of fd departure
     EvictClientCallbackContext ctx;
     ctx.fs = fs;
     ctx.pipe = pipeWithMainThread;
+    ctx.resCode = 0;
 
     List_forEachWithContext(lockers, evictClientCallback, &ctx, &error);
   }
@@ -826,7 +842,9 @@ static void *worker(void *args)
             sprintf(toLog, "Requested REMOVE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
-            FileSystem_removeFile(fs, pathname, id, &error);
+            // if there were clients waiting for the lock on this file, we have to notify them
+            List_T clientsThatWillNotGetTheLock = FileSystem_removeFile(fs, pathname, id, &error);
+
             int resCode = 0;
             if (error)
             {
@@ -844,6 +862,21 @@ static void *worker(void *args)
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
             }
             free(pathname);
+
+            EvictClientCallbackContext ctx;
+            ctx.fs = fs;
+            ctx.pipe = pipe;
+            ctx.resCode = -1;
+
+            int error = 0;
+            List_forEachWithContext(clientsThatWillNotGetTheLock, evictClientCallback, &ctx, &error);
+            List_free(&clientsThatWillNotGetTheLock, 1, NULL);
+
+            if (error)
+            {
+
+              perror("error during the eviction of a client");
+            }
 
             if (!closeConnection)
             {
@@ -892,6 +925,7 @@ static void *worker(void *args)
               // in case of success send a resCode of 0
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
             }
+
             free(pathname);
 
             if (!closeConnection && error != E_FS_FILE_IS_LOCKED)
@@ -955,15 +989,18 @@ static void *worker(void *args)
                 }
                 else
                 {
+                  // evict the client from the file-system
+                  if (evictClient(idWithLock->id, fs, pipe) == -1)
+                  {
+                    perror("error during the eviction of a client");
+                  }
+
                   // close connection
                   int minusOne = -1;
                   HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
                               {
                                 perror("failed communication with main thread");
                               });
-
-                  // evict the client from the file-system
-                  evictClient(idWithLock->id, fs, pipe);
 
                   CLOSE(idWithLock->id, "cannot close the communication with a client");
                 }
@@ -1201,7 +1238,7 @@ int main(int argc, char **argv)
 
   // create server socket
 
-  int fd_skt = setupServerSocket(SOCKNAME, UNIX_PATH_MAX);
+  int fd_skt = setupServerSocket(SOCKNAME, UNIX_PATH_MAX - 1);
 
   // ----------------------------------------------------------------------
 
@@ -1417,6 +1454,10 @@ int main(int argc, char **argv)
     puts(SimpleQueue_getErrorMessage(error));
     error = 0;
   }
+  else
+  {
+    LOG("Thread-safe queue correctly freed")
+  }
 
   // ----------------------------------------------------------------------
 
@@ -1431,6 +1472,10 @@ int main(int argc, char **argv)
       break;
     }
   }
+  if (!errno)
+  {
+    LOG("Threads correctly joined")
+  }
 
   // ----------------------------------------------------------------------
 
@@ -1440,6 +1485,10 @@ int main(int argc, char **argv)
   {
     puts(ConfigParser_getErrorMessage(error));
     error = 0;
+  }
+  else
+  {
+    LOG("Config parsers correctly freed")
   }
 
   // ----------------------------------------------------------------------
@@ -1451,15 +1500,9 @@ int main(int argc, char **argv)
     puts(FileSystem_getErrorMessage(error));
     error = 0;
   }
-
-  // ----------------------------------------------------------------------
-
-  // free the logger
-  Logger_delete(1, &error);
-  if (error)
+  else
   {
-    puts(Logger_getErrorMessage(error));
-    error = 0;
+    LOG("File-system correctly freed")
   }
 
   // ----------------------------------------------------------------------
@@ -1471,7 +1514,26 @@ int main(int argc, char **argv)
   if (close_res == -1)
   {
     perror("closing the socket socket fd has failed");
+    LOG("closing the socket socket fd has failed")
     return -1;
+  }
+  else
+  {
+    LOG("Connection correctly closed")
+  }
+
+  // ----------------------------------------------------------------------
+
+  // free the logger
+  Logger_delete(1, &error);
+  if (error)
+  {
+    puts(Logger_getErrorMessage(error));
+    error = 0;
+  }
+  else
+  {
+    LOG("Logger correctly freed")
   }
 
   // ----------------------------------------------------------------------

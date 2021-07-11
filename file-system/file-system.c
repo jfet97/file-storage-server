@@ -2375,13 +2375,15 @@ void FileSystem_closeFile(FileSystem fs, char *path, OwnerId ownerId, int *error
 //
 // Note: never release the file-system mutex because we don't want another
 // client waiting on a lock that is going to be destroyed
-void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
+List_T FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *error)
 {
     int errToSet = 0;
     int hasFSMutex = 1; // overall mutex
     int hasMutex = 0;
     int hasOrdering = 0;
 
+    // list of fds waiting for the lock on this file
+    List_T toRet = NULL;
     File file = NULL;
 
     // arguments check
@@ -2495,7 +2497,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
         free(file->data);
         free(file->path);
         List_free(&file->openedBy, 1, NULL);
-        List_free(&file->waitingLockers, 1, NULL);
+        toRet = file->waitingLockers;
         free(file);
     }
 
@@ -2511,6 +2513,7 @@ void FileSystem_removeFile(FileSystem fs, char *path, OwnerId ownerId, int *erro
     }
 
     SET_ERROR;
+    return toRet;
 }
 
 // Remove the presence of a client (ownerId) from all the structures inside the file-system

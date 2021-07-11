@@ -359,6 +359,8 @@ void Logger_flush(int *error)
             ,
             logger->log[0] = '\0';)
 
+        fflush(logger->file);
+
         NON_ZERO_DO(pthread_mutex_unlock(&lock), {
             errToSet = E_LOG_MUTEX;
         })
