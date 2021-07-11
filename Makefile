@@ -27,9 +27,18 @@ clean:
 	((cd ./test/test1 && rm -rf ./clients) || true)
 	((cd ./test/test1 && rm -rf ./output) || true)
 	((cd ./test/test1 && rm -f log.txt) || true)
+	((cd ./test/test2 && rm -rf ./clients) || true)
+	((cd ./test/test2 && rm -rf ./output) || true)
+	((cd ./test/test2 && rm -f log.txt) || true)
 
 test1: clean dist
 	(cd test/test1 && bash script.sh)
 
 test1-d: clean debug-d
 	(cd test/test1 && bash script.sh)
+
+test2: clean dist
+	(cd test/test2 && bash script.sh)
+
+test2-d: clean debug-d
+	(cd test/test2 && bash script.sh)

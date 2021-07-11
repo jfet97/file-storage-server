@@ -1513,8 +1513,8 @@ int main(int argc, char **argv)
     ;
   if (close_res == -1)
   {
-    perror("closing the socket socket fd has failed");
-    LOG("closing the socket socket fd has failed")
+    perror("closing the server socket fd has failed");
+    LOG("closing the server socket fd has failed")
     return -1;
   }
   else

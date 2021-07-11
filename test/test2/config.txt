@@ -1,0 +1,6 @@
+N_OF_WORKERS,4
+SOCKNAME,./bin/mysocket
+MAX_FS_SIZE,1000000
+MAX_FS_N_FILES,10
+EVICTION_POLICY,LRU
+LOG_FILE,../test/test2/output/log.txt

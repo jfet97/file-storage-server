@@ -165,11 +165,17 @@ void Logger_delete(int force_free, int *error)
 
     if (hasLoggerLock)
     {
-        IS_NEGATIVE_DO_ELSE(
-            fprintf(logger->file, "%s", logger->log),
+
+        // flush del file
+        fprintf(logger->file, "%s", logger->log);
+        fflush(logger->file);
+
+        if (errno)
+        {
             errToSet = E_LOG_FILE;
-            ,
-            logger->log[0] = '\0';)
+        }
+
+        logger->log[0] = '\0';
 
         // chiudo anche se e' fallita la flush
         int closeFileSuccessfull = 1;

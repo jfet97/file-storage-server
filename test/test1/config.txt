@@ -3,4 +3,4 @@ SOCKNAME,./bin/mysocket
 MAX_FS_SIZE,128000000
 MAX_FS_N_FILES,10000
 EVICTION_POLICY,LRU
-LOG_FILE,../test/test1/log.txt
+LOG_FILE,../test/test1/output/log.txt
