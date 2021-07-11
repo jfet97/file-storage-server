@@ -45,6 +45,13 @@ bin/client -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-fi
 bin/client -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -c ../test/local-file-system/text-files/lorems/lorem1000.txt -p &> ../test/test1/output/client5.txt &
 # valgrind --leak-check=full bin/client -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -c ../test/local-file-system/text-files/lorems/lorem1000.txt &> ../test/test1/output/client5.txt &
 
+# CLIENT 6 
+bin/client -f ../server/bin/mysocket -t 200 -e /test/file/casuale2.txt -l /test/file/casuale2.txt -a ../test/local-file-system/text-files/lorems/lorem150.txt,/test/file/casuale2.txt,/test/file/casuale2.txt -u /test/file/casuale2.txt -p &> ../test/test1/output/client6.txt &
+
+# CLIENT 7 
+bin/client -f ../server/bin/mysocket -t 200 -W ../test/test1/config.txt,../test/test1/script.sh -l /test/file/casuale2.txt -o /test/file/casuale2.txt -r /test/file/casuale2.txt,../test/test1/config.txt,../test/test1/script.sh -d ../test/test1/clients/read/ -s /test/file/casuale2.txt -u /test/file/casuale2.txt -p &> ../test/test1/output/client7.txt &
+
+
 sleep 0.3
 
 # kill server but wait until all clients have started their operations

@@ -394,11 +394,6 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         hasQueueLock = 1;
         // lascio la possibilita' a thread fermi di accorgersi che stiamo chiudendo
 
-        struct timespec tim;
-        tim.tv_sec = 0;
-        tim.tv_nsec = 100000000L; // 0.10 s
-        nanosleep(&tim, NULL);    // not a big deal if it fails
-
         NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
                     {
                         errToSet = E_SQ_MUTEX_LOCK;
