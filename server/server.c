@@ -1531,10 +1531,6 @@ int main(int argc, char **argv)
     puts(Logger_getErrorMessage(error));
     error = 0;
   }
-  else
-  {
-    LOG("Logger correctly freed")
-  }
 
   // ----------------------------------------------------------------------
 

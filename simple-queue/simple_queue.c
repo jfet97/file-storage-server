@@ -399,6 +399,9 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
                         hasQueueLock = 0;
                     })
 
+        puts("The SimpleQueue instance is busy, waiting before freeing it...");
+        fflush(stdout);
+
         if (hasQueueLock)
         {
             hasQueueLock = 0;
