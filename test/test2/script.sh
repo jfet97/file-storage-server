@@ -49,6 +49,12 @@ bin/client -f ../server/bin/mysocket -o ../test/local-file-system/text-files/lor
 bin/client -f ../server/bin/mysocket -w ../test/local-file-system/ -D ../test/test2/clients/evicted -p &> ../test/test2/output/client6.txt &
 # valgrind --leak-check=full bin/client -f ../server/bin/mysocket -w ../test/local-file-system/ -D ../test/test2/clients/evicted -p &> ../test/test2/output/client6.txt
 
+# CLIENT 7 
+bin/client -f ../server/bin/mysocket -t 200 -e /test/file/casuale2.txt -l /test/file/casuale2.txt -a ../test/local-file-system/text-files/lorems/lorem150.txt,/test/file/casuale2.txt,/test/file/casuale2.txt -u /test/file/casuale2.txt -p &> ../test/test2/output/client7.txt &
+
+# CLIENT 8 
+bin/client -f ../server/bin/mysocket -t 200 -W ../test/test2/config.txt,../test/test2/script.sh -l /test/file/casuale2.txt -o /test/file/casuale2.txt -r /test/file/casuale2.txt,../test/test2/config.txt,../test/test2/script.sh -d ../test/test2/clients/read -s /test/file/casuale2.txt -u /test/file/casuale2.txt -p &> ../test/test2/output/client8.txt &
+
 
 sleep 5
 
