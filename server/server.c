@@ -140,11 +140,11 @@ sig_handler_cb(int signum, int pipe)
   }
   else if (signum == SIGQUIT || signum == SIGINT)
   {
-    toSend = SOFT_QUIT;
+    toSend = RAGE_QUIT;
   }
   else if (signum == SIGHUP)
   {
-    toSend = RAGE_QUIT;
+    toSend = SOFT_QUIT;
   }
   else
   {

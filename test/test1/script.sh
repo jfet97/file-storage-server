@@ -48,6 +48,6 @@ bin/client -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-fi
 sleep 0.3
 
 # kill server but wait until all clients have started and have finished their operations
-kill -2 $SERVER_PID
+kill -1 $SERVER_PID
 
 wait $SERVER_PID
