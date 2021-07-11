@@ -25,6 +25,7 @@ clean:
 	(cd ./client && make clean)
 	(cd ./server && make clean)
 	((cd ./test/test1 && rm -rf ./clients) || true)
+	((cd ./test/test1 && rm -rf ./output) || true)
 	((cd ./test/test1 && rm -f log.txt) || true)
 
 test1: clean dist

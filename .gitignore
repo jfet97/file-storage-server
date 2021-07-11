@@ -59,3 +59,5 @@ bin/
 *log.txt
 
 clients/
+
+output/

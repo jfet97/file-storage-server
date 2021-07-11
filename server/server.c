@@ -206,7 +206,7 @@ static void evictClientCallback(void *rawCtx, void *rawOid, int *error)
   if (resCode == -1)
   {
     // the client waits a message
-    AINZ(sendData(idWithLock->id, "file-system: file has been removed", strlen("file-system: file has been removed") + 1), "cannot respond to a client", *error = -1;)
+    AINZ(sendData(idWithLock->id, "filesystem file has been removed", strlen("filesystem file has been removed") + 1), "cannot respond to a client", *error = -1;)
   }
 
   if (!*error)
