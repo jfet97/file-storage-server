@@ -396,7 +396,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 
         struct timespec tim;
         tim.tv_sec = 0;
-        tim.tv_nsec = 250000000L; // 0.25 s
+        tim.tv_nsec = 100000000L; // 0.10 s
         nanosleep(&tim, NULL);    // not a big deal if it fails
 
         NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
@@ -405,10 +405,15 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
                         hasQueueLock = 0;
                     })
 
+        // sveglio con broadcast tutti i lettori eventualmente fermi
+        NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
+            errToSet = E_SQ_MUTEX_LOCK;
+        })
+
         puts("SimpleQueue instance is busy, waiting before deletion...");
         fflush(stdout);
 
-        if (hasQueueLock)
+        if (hasQueueLock && !errToSet)
         {
             hasQueueLock = 0;
             NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)),

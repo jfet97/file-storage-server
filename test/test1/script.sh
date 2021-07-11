@@ -10,7 +10,7 @@ pwd
 
 # launch server in background
 valgrind --leak-check=full bin/server ../test/test1/config.txt >> ../test/test1/output/server.txt & 
-# bin/server ../test/test1/config.txt &
+# bin/server ../test/test1/config.txt >> ../test/test1/output/server.txt &
 
 # save its PID
 SERVER_PID=$!
