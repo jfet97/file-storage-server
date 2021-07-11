@@ -32,14 +32,14 @@ bin/main -f ../server/bin/mysocket -t 200 -n  ../test/local-file-system/text-fil
 bin/main -f ../server/bin/mysocket -t 200 -R n=0 -d ../test/test1/clients/read -p &
 
 # CLIENT 4
-bin/main -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -e ./test/file/casuale.txt -a ../test/local-file-system/text-files/lorems/lorem1000.txt,./test/file/casuale.txt  -p &
+bin/main -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -e test/file/casuale.txt -a ../test/local-file-system/text-files/lorems/lorem1000.txt,test/file/casuale.txt -r test/file/casuale.txt -d ../test/test1/clients/read -p &
 
 # CLIENT 5
 bin/main -f ../server/bin/mysocket -t 200 -o ../test/local-file-system/text-files/lorems/lorem1000.txt -l ../test/local-file-system/text-files/lorems/lorem1000.txt -c ../test/local-file-system/text-files/lorems/lorem1000.txt -p &
 
-sleep 15
+sleep 5
 
-# kill server
-kill -1 $SERVER_PID
+# kill server but wait until all clients have started and have finished their operations
+kill -2 $SERVER_PID
 
 wait $SERVER_PID

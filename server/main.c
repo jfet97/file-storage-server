@@ -111,6 +111,12 @@ typedef struct
   int op; // the requested operation form client
 } SendFilesContext;
 
+typedef struct
+{
+  int pipe; // pipe with main thread
+  FileSystem fs;
+} EvictClientCallbackContext;
+
 // socket file name
 char *SOCKNAME = NULL;
 
@@ -179,6 +185,85 @@ static void *sig_handler(void *arg)
   sig_handler_cb(signum, pipe);
 
   return NULL;
+}
+
+static int evictClient(int, FileSystem, int);
+// callback used to notify a list of fds because they have got a lock
+static void evictClientCallback(void *rawCtx, void *rawOid, int *error)
+{
+  *error = 0;
+  OwnerId *idWithLock = rawOid;
+  EvictClientCallbackContext *ctx = rawCtx;
+
+  // this is the id (fd) of the client waiting for the lock on the pathname file that just got it
+  // we have to signal to this client what has just happened
+  int resCode = 0;
+  AINZ(sendData(idWithLock->id, &resCode, sizeof(resCode)), "cannot respond to a client", *error = -1;)
+
+  if (!*error)
+  {
+    // sent this fd back to the main thread
+    HANDLE_WRNS(writen(ctx->pipe, &(idWithLock->id), sizeof(idWithLock->id)), sizeof(idWithLock->id), NOOP,
+                {
+                  perror("failed communication with main thread");
+                });
+  }
+  else
+  {
+    // close connection
+    int minusOne = -1;
+    HANDLE_WRNS(writen(ctx->pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
+                {
+                  perror("failed communication with main thread");
+                });
+
+    // evict the client from the file-system
+    if (evictClient(idWithLock->id, ctx->fs, ctx->pipe) == -1)
+    {
+      perror("error during the eviction of a client");
+    }
+
+    CLOSE(idWithLock->id, "cannot close the communication with a client");
+  }
+}
+// evict a client from the file-system
+static int evictClient(int fd, FileSystem fs, int pipeWithMainThread)
+{
+  int error = 0;
+  OwnerId id;
+  id.id = fd;
+
+  List_T lockers = FileSystem_evictClient(fs, id, &error);
+  if (error)
+  {
+    perror(FileSystem_getErrorMessage(error));
+  }
+
+  if (!error && lockers)
+  {
+    // lockers is a list full of fds of clients that have got locks on various files
+    // because of fd departure
+    EvictClientCallbackContext ctx;
+    ctx.fs = fs;
+    ctx.pipe = pipeWithMainThread;
+
+    List_forEachWithContext(lockers, evictClientCallback, &ctx, &error);
+  }
+
+  if (lockers)
+  {
+    List_free(&lockers, 1, NULL);
+    free(lockers);
+  }
+
+  if (error)
+  {
+    return -1;
+  }
+  else
+  {
+    return 0;
+  }
 }
 
 // cleanup function
@@ -713,9 +798,6 @@ static void *worker(void *args)
             {
               // in case of success send a resCode of 0
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
-
-              // send a message to say if the evicted file was empty or not
-              // send the file's content if it is not empty
             }
             free(pathname);
 
@@ -760,9 +842,6 @@ static void *worker(void *args)
             {
               // in case of success send a resCode of 0
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
-
-              // send a message to say if the evicted file was empty or not
-              // send the file's content if it is not empty
             }
             free(pathname);
 
@@ -793,7 +872,12 @@ static void *worker(void *args)
 
             FileSystem_lockFile(fs, pathname, id, &error);
             int resCode = 0;
-            if (error)
+            if (error == E_FS_FILE_IS_LOCKED)
+            {
+              // in such a case the fd has been saved internally by the file-system
+              // the client will wait patiently the lock...
+            }
+            else if (error)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
@@ -807,13 +891,10 @@ static void *worker(void *args)
             {
               // in case of success send a resCode of 0
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
-
-              // send a message to say if the evicted file was empty or not
-              // send the file's content if it is not empty
             }
             free(pathname);
 
-            if (!closeConnection)
+            if (!closeConnection && error != E_FS_FILE_IS_LOCKED)
             {
               sendBackFileDescriptor = 1;
             }
@@ -838,7 +919,7 @@ static void *worker(void *args)
             sprintf(toLog, "Requested UNLOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
-            FileSystem_unlockFile(fs, pathname, id, &error);
+            OwnerId *idWithLock = FileSystem_unlockFile(fs, pathname, id, &error);
             int resCode = 0;
             if (error)
             {
@@ -852,11 +933,43 @@ static void *worker(void *args)
             }
             else
             {
-              // in case of success send a resCode of 0
+              // in case of success send a resCode of 0 to fd
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
 
-              // send a message to say if the evicted file was empty or not
-              // send the file's content if it is not empty
+              if (idWithLock)
+              {
+                // this is the id (fd) of the client waiting for the lock on the pathname file that just got it
+                // we have to signal to this client what has just happened
+                int resCode = 0;
+                int error = 0;
+                AINZ(sendData(idWithLock->id, &resCode, sizeof(resCode)), "cannot respond to a client", error = 1;)
+
+                if (!error)
+                {
+                  // sent this fd back to the main thread
+                  HANDLE_WRNS(writen(pipe, &(idWithLock->id), sizeof(idWithLock->id)), sizeof(idWithLock->id), NOOP,
+                              {
+                                perror("failed communication with main thread");
+                                toBreak = 1;
+                              });
+                }
+                else
+                {
+                  // close connection
+                  int minusOne = -1;
+                  HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
+                              {
+                                perror("failed communication with main thread");
+                              });
+
+                  // evict the client from the file-system
+                  evictClient(idWithLock->id, fs, pipe);
+
+                  CLOSE(idWithLock->id, "cannot close the communication with a client");
+                }
+
+                free(idWithLock);
+              }
             }
             free(pathname);
 
@@ -878,6 +991,14 @@ static void *worker(void *args)
 
       if (closeConnection)
       {
+        // remove the client from the file-system
+        int ec = evictClient(fd, fs, pipe);
+
+        if (ec == -1)
+        {
+          perror("error during the eviction of a client");
+        }
+
         int minusOne = -1;
         HANDLE_WRNS(writen(pipe, &minusOne, sizeof(minusOne)), sizeof(minusOne), NOOP,
                     {
@@ -929,7 +1050,7 @@ int main(int argc, char **argv)
 
   // ----------------------------------------------------------------------
 
-    char *configPath = argv[1];
+  char *configPath = argv[1];
   AAIN(configPath, "missing configuration path");
 
   // parser the configuration file

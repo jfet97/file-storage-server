@@ -237,7 +237,7 @@ void evictClientInternal(void *rawCtx, void *rawFile, int *error)
         if (file->currentlyLockedBy.id == ctx->oid.id)
         {
             file->currentlyLockedBy.id = 0;
-            oidToGiveLock = List_extractHead(file->waitingLockers, error);
+            oidToGiveLock = List_extractHead(file->waitingLockers, NULL);
         }
 
         // eventually reset the write flag
@@ -2117,9 +2117,8 @@ OwnerId *FileSystem_unlockFile(FileSystem fs, char *path, OwnerId ownerId, int *
             if (!errToSet && listLength >= 1)
             {
                 // ...extract it from the waiting list
-                oidToRet = List_extractHead(file->waitingLockers, &errToSet);
-                TO_GENERAL_ERROR(errToSet);
-                if (!errToSet)
+                oidToRet = List_extractHead(file->waitingLockers, NULL);
+                if (oidToRet)
                 {
                     lockedOwnerToSet = oidToRet->id;
                 }
