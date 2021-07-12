@@ -13,7 +13,7 @@ dist: clean all
 
 .PHONY: clean
 
-all: clean
+all:
 	(cd ./client && make all)
 	(cd ./server && make all)
 
@@ -34,11 +34,11 @@ clean:
 	((cd ./test/test3 && rm -rf ./output) || true)
 	((cd ./test/test3 && rm -f log.txt) || true)
 
-test1:
+test1: all
 	(cd test/test1 && bash script.sh)
 
-test2:
+test2: all
 	(cd test/test2 && bash script.sh)
 
-test3:
+test3: all
 	(bash test/test3/script.sh)
