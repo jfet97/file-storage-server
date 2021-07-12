@@ -45,6 +45,6 @@
 ssize_t readn(int fd, void *v_ptr, size_t n);
 ssize_t writen(int fd, void *v_ptr, size_t n);
 int getData(int fd, void *dest, size_t *readSize, int alloc);
-int sendRequestType(int fd, int request);
+int sendRequestType(int fd, size_t request);
 int sendData(int fd, const void *data, size_t size);
 const char* fromRequestToString(int request);

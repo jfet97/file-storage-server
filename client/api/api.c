@@ -76,7 +76,7 @@ int fd_skt = -1;
 
 #define MKDIR "mkdir -p"
 
-static int doRequest(int, ...);
+static int doRequest(size_t, ...);
 static int handleFilesResponse(int, const char *, const char *);
 
 // ---------------- API ----------------
@@ -178,7 +178,7 @@ int readLocalFile(const char *path, void **bufPtr, size_t *size)
   }
   else
   {
-    P(printf("successfully read the file %s from disk of size %d\n", path, *size));
+    P(printf("successfully read the file %s from disk of size %zd\n", path, *size));
     return 0;
   }
 }
@@ -457,6 +457,7 @@ int openFile(const char *pathname, int flags)
 {
   CHECK_FD
   int error = 0;
+  size_t flags_ = flags;
   P(puts("openFile operation has been requested on file:"))
   P(puts(pathname))
 
@@ -472,19 +473,19 @@ int openFile(const char *pathname, int flags)
   char *absPath = absolutify(pathname);
   AIN(absPath, "openFile internal error", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(OPEN_FILE, absPath, flags), "openFile has failed", error = 1;)
+  AINZ(doRequest(OPEN_FILE, absPath, flags_), "openFile has failed", error = 1;)
 
-  int resCode;
+  size_t resCode;
   if (!error)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "openFile has failed", error = 1;)
-    P(printf("remote openFile has received %d as result code\n", resCode);)
+    P(printf("remote openFile has received %zd as result code\n", resCode);)
   }
 
   if (!error)
   {
-    if (resCode == -1)
+    if (resCode == 1)
     {
       // read the error message
       char *errMess;
@@ -502,14 +503,14 @@ int openFile(const char *pathname, int flags)
         free(errMess);
       }
 
-      // because resCode == -1
+      // because resCode == 1
       error = 1;
       errno = EPERM;
     }
     else
     {
       // read if a file was evicted
-      int evicted;
+      size_t evicted;
       AINZ(getData(fd_skt, &evicted, 0, 0), "openFile has failed", error = 1;)
 
       // if a file ws evicted, get it
@@ -525,7 +526,7 @@ int openFile(const char *pathname, int flags)
           P(printf("%.*s was evicted\n", (int)filepathLen, filepath);)
 
           // read if the file was empty
-          int emptyFile;
+          size_t emptyFile;
           AINZ(getData(fd_skt, &emptyFile, 0, 0), "openFile has failed", error = 1;)
 
           // if it was empty, write an empty file
@@ -588,15 +589,15 @@ int readFile(const char *pathname, void **buf, size_t *size)
 
   AINZ(doRequest(READ_FILE, absPath), "readFile has failed", error = 1;)
 
-  int resCode;
+  size_t resCode;
   if (!error)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "readFile has failed", error = 1;)
-    P(printf("remote readFile has received %d as result code\n", resCode);)
+    P(printf("remote readFile has received %zd as result code\n", resCode);)
   }
 
-  if (!error && resCode == -1)
+  if (!error && resCode == 1)
   {
     // read the error message
     char *errMess;
@@ -614,14 +615,14 @@ int readFile(const char *pathname, void **buf, size_t *size)
       free(errMess);
     }
 
-    // because resCode == -1
+    // because resCode == 1
     error = 1;
     errno = EPERM;
   }
   else if (!error && resCode != -1)
   {
     // read if the file was empty
-    int emptyFile;
+    size_t emptyFile;
     AINZ(getData(fd_skt, &emptyFile, 0, 0), "readFile has failed", error = 1;)
 
     // if it was empty, write NULL
@@ -706,10 +707,12 @@ int readNFiles(int N, const char *dirname)
   CHECK_FD
   P(puts("readNFiles operation has been requested"))
 
+  size_t N_ = N;
+
   // check arguments
   AIN(dirname, "invalid dirname argument for readNFiles", errno = EINVAL; return -1;)
 
-  AINZ(doRequest(READ_N_FILES, N), "readNFiles has failed", return -1;)
+  AINZ(doRequest(READ_N_FILES, N_), "readNFiles has failed", return -1;)
 
   return handleFilesResponse(READ_N_FILES, "readNFiles", dirname);
 }
@@ -730,14 +733,14 @@ int lockFile(const char *pathname)
   AINZ(doRequest(LOCK_FILE, absPath), "lockFile has failed", free(absPath); return -1;)
 
   // read the result code
-  int resCode;
+  size_t resCode;
   AINZ(getData(fd_skt, &resCode, 0, 0), "lockFile has failed", error = 1;)
 
   if (!error)
   {
-    P(printf("remote lockFile has received %d as result code\n", resCode);)
+    P(printf("remote lockFile has received %zd as result code\n", resCode);)
 
-    if (resCode == -1)
+    if (resCode == 1)
     {
       // read the error message
       char *errMess;
@@ -755,7 +758,7 @@ int lockFile(const char *pathname)
         free(errMess);
       }
 
-      // because resCode == -1
+      // because resCode == 1
       error = 1;
       errno = EPERM;
     }
@@ -789,14 +792,14 @@ int unlockFile(const char *pathname)
   AINZ(doRequest(UNLOCK_FILE, absPath), "unlockFile has failed", free(absPath); return -1;)
 
   // read the result code
-  int resCode;
+  size_t resCode;
   AINZ(getData(fd_skt, &resCode, 0, 0), "unlockFile has failed", error = 1;)
 
   if (!error)
   {
-    P(printf("remote unlockFile has received %d as result code\n", resCode);)
+    P(printf("remote unlockFile has received %zd as result code\n", resCode);)
 
-    if (resCode == -1)
+    if (resCode == 1)
     {
       // read the error message
       char *errMess;
@@ -814,7 +817,7 @@ int unlockFile(const char *pathname)
         free(errMess);
       }
 
-      // because resCode == -1
+      // because resCode == 1
       error = 1;
       errno = EPERM;
     }
@@ -848,14 +851,14 @@ int closeFile(const char *pathname)
   AINZ(doRequest(CLOSE_FILE, absPath), "closeFile has failed", free(absPath); return -1;)
 
   // read the result code
-  int resCode;
+  size_t resCode;
   AINZ(getData(fd_skt, &resCode, 0, 0), "closeFile has failed", error = 1;)
 
   if (!error)
   {
-    P(printf("remote closeFile has received %d as result code\n", resCode);)
+    P(printf("remote closeFile has received %zd as result code\n", resCode);)
 
-    if (resCode == -1)
+    if (resCode == 1)
     {
       // read the error message
       char *errMess;
@@ -873,7 +876,7 @@ int closeFile(const char *pathname)
         free(errMess);
       }
 
-      // because resCode == -1
+      // because resCode == 1
       error = 1;
       errno = EPERM;
     }
@@ -907,14 +910,14 @@ int removeFile(const char *pathname)
   AINZ(doRequest(REMOVE_FILE, absPath), "removeFile has failed", free(absPath); return -1;)
 
   // read the result code
-  int resCode;
+  size_t resCode;
   AINZ(getData(fd_skt, &resCode, 0, 0), "removeFile has failed", error = 1;)
 
   if (!error)
   {
-    P(printf("remote removeFile has received %d as result code\n", resCode);)
+    P(printf("remote removeFile has received %zd as result code\n", resCode);)
 
-    if (resCode == -1)
+    if (resCode == 1)
     {
       // read the error message
       char *errMess;
@@ -932,7 +935,7 @@ int removeFile(const char *pathname)
         free(errMess);
       }
 
-      // because resCode == -1
+      // because resCode == 1
       error = 1;
       errno = EPERM;
     }
@@ -952,7 +955,7 @@ int removeFile(const char *pathname)
 
 // ---------------- Internals ----------------
 
-static int doRequest(int request, ...)
+static int doRequest(size_t request, ...)
 {
 
   va_list valist;
@@ -966,7 +969,7 @@ static int doRequest(int request, ...)
   case OPEN_FILE:
   {
     char *pathname = va_arg(valist, char *);
-    int flags = va_arg(valist, int);
+    int flags = va_arg(valist, size_t);
     size_t pathLen = strlen(pathname) + 1;
 
     AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
@@ -991,7 +994,7 @@ static int doRequest(int request, ...)
   }
   case READ_N_FILES:
   {
-    int N = va_arg(valist, int);
+    int N = va_arg(valist, size_t);
     AINZC(!toErrno, sendRequestType(fd_skt, request), "request failed", toRet = -1; toErrno = errno;)
     AINZC(!toErrno, sendData(fd_skt, &N, sizeof(N)), "request failed", toRet = -1; toErrno = errno;)
     break;
@@ -1032,15 +1035,15 @@ static int handleFilesResponse(int op, const char *opS, const char *dirname)
 
   int error = 0;
 
-  int resCode;
+  size_t resCode;
   if (!error)
   {
     // read the result code
     AINZ(getData(fd_skt, &resCode, 0, 0), "handleFilesResponse has failed", error = 1;)
-    P(printf("remote %s has received %d as result code\n", opS, resCode);)
+    P(printf("remote %s has received %zd as result code\n", opS, resCode);)
   }
 
-  if (!error && resCode == -1)
+  if (!error && resCode == 1)
   {
     // read the error message
     char *errMess;
@@ -1058,22 +1061,22 @@ static int handleFilesResponse(int op, const char *opS, const char *dirname)
       free(errMess);
     }
 
-    // because resCode == -1
+    // because resCode == 1
     error = 1;
     errno = EPERM;
   }
   else if (!error && resCode != -1)
   {
     // read the number of evicted files
-    int numOfEvictedFiles = 0;
+    size_t numOfEvictedFiles = 0;
     AINZ(getData(fd_skt, &numOfEvictedFiles, NULL, 0), "handleFilesResponse has failed", error = 1;)
     if (op == APPEND_TO_FILE || op == WRITE_FILE)
     {
-      P(printf("%d files has been evicted\n", numOfEvictedFiles))
+      P(printf("%zd files has been evicted\n", numOfEvictedFiles))
     }
     if (op == READ_N_FILES)
     {
-      P(printf("%d files has been read\n", numOfEvictedFiles))
+      P(printf("%zd files has been read\n", numOfEvictedFiles))
     }
 
     // get each evicted file and store it (if dirname is present)
@@ -1096,7 +1099,7 @@ static int handleFilesResponse(int op, const char *opS, const char *dirname)
         }
 
         // read if the file was empty
-        int emptyFile;
+        size_t emptyFile;
         AINZ(getData(fd_skt, &emptyFile, 0, 0), "handleFilesResponse has failed", error = 1;)
 
         // if it was empty, write an empty file
@@ -1112,7 +1115,7 @@ static int handleFilesResponse(int op, const char *opS, const char *dirname)
           void *data;
           size_t dataLen;
           AINZ(getData(fd_skt, &data, &dataLen, 1), "handleFilesResponse has failed", error = 1;)
-          P(printf("file size is %d\n", dataLen))
+          P(printf("file size is %zd\n", dataLen))
 
           if (!error)
           {

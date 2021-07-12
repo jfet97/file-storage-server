@@ -112,7 +112,7 @@ int getData(int fd, void *dest, size_t *sizePtr, int alloc)
   return -1;
 }
 
-int sendRequestType(int fd, int request)
+int sendRequestType(int fd, size_t request)
 {
   HANDLE_WRNS(writen(fd, &request, sizeof(request)), sizeof(request), return 0;, return -1;)
 }

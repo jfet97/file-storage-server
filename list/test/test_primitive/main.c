@@ -28,11 +28,11 @@ void *duplicateNumber(void *vn, int *error)
 void print(void *vn, int *_)
 {
     int *pn = vn;
-    printf("%d\n", *pn);
+    printf("%zd\n", *pn);
 }
 
 #define DEBUG_NUMBER(N, M) \
-    printf("%d should be %d\n", N, M);
+    printf("%zd should be %zd\n", N, M);
 
 #define DEBUG_P_NUMBER(P, N) \
     DEBUG_NUMBER(*P, N);

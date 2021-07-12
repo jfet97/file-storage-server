@@ -39,6 +39,7 @@ typedef struct
     char *path;
     char *data;
     size_t size;
+    List_T waitingLockers;
 } * ResultFile;
 
 typedef struct

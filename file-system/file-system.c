@@ -99,7 +99,7 @@ void printFile(void *rawFile, int *_)
     File file = rawFile;
     puts("--------------------------");
     printf("File Path is: %s\n", file->path);
-    printf("File Size is: %d\n", file->size);
+    printf("File Size is: %zd\n", file->size);
     // if(file->size) {
     //     printf("File Data is: %.*s\n", (int)file->size, file->data);
     // }
@@ -123,6 +123,10 @@ void fileResultDeallocator(void *rawFile)
     ResultFile file = rawFile;
     free(file->path);
     free(file->data);
+    if (&file->waitingLockers)
+    {
+        List_free(&file->waitingLockers, 1, NULL);
+    }
 }
 
 // Callback used to compare two OwnerIds
@@ -433,6 +437,7 @@ void readNFiles(void *rawCtx, void *rawFile, int *error)
         resultFile->size = file->size;
         resultFile->data = malloc(sizeof(*resultFile->data) * file->size);
         resultFile->path = malloc(sizeof(*resultFile->path) * (strlen(file->path) + 1));
+        resultFile->waitingLockers = NULL;
         IS_NULL_DO(resultFile->data, { *error = E_FS_MALLOC; })
         IS_NULL_DO(resultFile->path, { *error = E_FS_MALLOC; })
     }
@@ -602,9 +607,9 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
         fs = *fsPtr;
 
         puts("\nFILE SYSTEM FINAL STATS");
-        printf("Max number of file stored was: %d\n", fs->maxNumOfFilesReached);
-        printf("Max Mbytes of space used was: %d\n", fs->maxByteOfStorageUsed / 1024);
-        printf("Number of times the replacing algorithm has run was: %d\n", fs->numOfReplacementAlgoRuns);
+        printf("Max number of file stored was: %zd\n", fs->maxNumOfFilesReached);
+        printf("Max Mbytes of space used was: %zd\n", fs->maxByteOfStorageUsed / 1024);
+        printf("Number of times the replacing algorithm has run was: %zd\n", fs->numOfReplacementAlgoRuns);
         puts("Follows a list of files still present in the file-system");
         List_forEach(fs->filesList, printFile, NULL);
         puts("FILE-SYSTEM HAS ENDED...HAVE A NICE DAY!");
@@ -639,7 +644,7 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
     int hasOrdering = 0;
     int hasExtractedFile = 0;
 
-    // try to pick a file from the end of the list
+    // try to extract a file from the end of the list
     if (!errToSet)
     {
         file = List_pickTail(fs->filesList, &errToSet);
@@ -648,14 +653,13 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
 
     // if the picked file's path corresponds to the path argument, but there are no other files to evict
     // in its place, declare a failure
-    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength - 1 == 0)
+    if (!errToSet && path && strcmp(file->path, path) == 0 && listLength - 1 == 0)
     {
         errToSet = E_FS_FAILED_EVICT;
     }
-
     // if the picked file's path corresponds to the path argument, and there is at least one file to evict
     // in its place, evict it
-    if (!errToSet && path && strncmp(file->path, path, strlen(path)) == 0 && listLength - 1 > 0)
+    else if (!errToSet && path && strcmp(file->path, path) == 0 && listLength - 1 > 0)
     {
         // temp: the file to not be evicted; it was previously picked
         // will be inserted back
@@ -689,18 +693,21 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
             temp = NULL;
         }
     }
+
+    // if the picket file's path does not correspond to the path argument, or path was NULL, evict the picked file
+    else if (!errToSet && ((path && strcmp(file->path, path) != 0) || !path))
+    {
+        file = List_extractTail(fs->filesList, &errToSet);
+        TO_GENERAL_ERROR(errToSet);
+        if (!errToSet)
+        {
+            hasExtractedFile = 1;
+        }
+    }
     else
     {
-        // if the picket file's path does not correspond to the path argument, or path was NULL, evict the picked file
-        if ((!errToSet && path && strncmp(file->path, path, strlen(path)) != 0) || !path)
-        {
-            file = List_extractTail(fs->filesList, &errToSet);
-            TO_GENERAL_ERROR(errToSet);
-            if (!errToSet)
-            {
-                hasExtractedFile = 1;
-            }
-        }
+        file = NULL;
+        errToSet = E_FS_FAILED_EVICT;
     }
 
     if (!errToSet)
@@ -759,13 +766,13 @@ ResultFile FileSystem_evict(FileSystem fs, char *path, int *error)
         evictedFile->data = file->data;
         evictedFile->path = file->path;
         evictedFile->size = file->size;
+        evictedFile->waitingLockers = file->waitingLockers;
 
         fs->numOfReplacementAlgoRuns++;
     }
 
     // always free all the file's data
     file &&hasExtractedFile ? List_free(&file->openedBy, 1, NULL) : (void)NULL;
-    file &&hasExtractedFile ? List_free(&file->waitingLockers, 1, NULL) : (void)NULL;
     file &&hasExtractedFile ? free(file) : (void)NULL;
     temp ? List_free(&temp->openedBy, 1, NULL) : (void)NULL;
     temp ? List_free(&temp->waitingLockers, 1, NULL) : (void)NULL;
@@ -1323,6 +1330,7 @@ ResultFile FileSystem_readFile(FileSystem fs, char *path, OwnerId ownerId, int *
     if (!errToSet)
     {
         resultFile->size = file->size;
+        resultFile->waitingLockers = NULL;
         resultFile->data = malloc(sizeof(*resultFile->data) * file->size);
         IS_NULL_DO(resultFile->data, { errToSet = E_FS_MALLOC; })
     }
@@ -2601,6 +2609,10 @@ void ResultFile_free(ResultFile *rfPtr, int *error)
     // free what has to be freed
     if (!errToSet)
     {
+        if ((*rfPtr)->waitingLockers)
+        {
+            List_free(&((*rfPtr)->waitingLockers), 1, NULL);
+        }
         free((*rfPtr)->data);
         free((*rfPtr)->path);
         free(*rfPtr);
@@ -2791,7 +2803,7 @@ void printOwnerIdInfo_DEBUG(void *rawOwnerId, int *_)
 {
     OwnerId *oid = rawOwnerId;
     puts("@@@@@@@@@@@@@@@@@@@");
-    printf("OwnerId is %d\n", oid->id);
+    printf("OwnerId is %zd\n", oid->id);
     puts("@@@@@@@@@@@@@@@@@@@");
 }
 
@@ -2803,9 +2815,9 @@ void printFileInfo_DEBUG(void *rawFile, int *_)
     puts("##############################");
     printf("File Path is: %s\n", file->path);
     printf("File Data is: %s\n", file->data);
-    printf("File Size is: %d\n", file->size);
-    printf("file->currentlyLockedBy is: %d\n", file->currentlyLockedBy.id);
-    printf("file->ownerCanWrite is: %d\n", file->ownerCanWrite.id);
+    printf("File Size is: %zd\n", file->size);
+    printf("file->currentlyLockedBy is: %zd\n", file->currentlyLockedBy.id);
+    printf("file->ownerCanWrite is: %zd\n", file->ownerCanWrite.id);
     puts("Openers Queue:");
     List_forEach(file->openedBy, printOwnerIdInfo_DEBUG, NULL);
     puts("\nLock Waiting Queue:");
@@ -2821,11 +2833,11 @@ void FileSystem_printAll_DEBUG(FileSystem fs)
     puts("**************************************************");
     puts("**************************************************");
     puts("FileSystem DEBUG INFO");
-    printf("REPLACEMENT POLICY IS %d\n", fs->replacementPolicy);
-    printf("MAX NUM OF FILES IS %d\n", fs->maxNumOfFiles);
-    printf("MAX FILE-SYSTEM SIZE IN BYTE IS %d\n", fs->maxStorageSize);
-    printf("CURRENT NUM OF FILES IS %d\n", fs->currentNumOfFiles);
-    printf("CURRENT FILE-SYSTEM SIZE IN BYTE IS IS %d\n", fs->currentStorageSize);
+    printf("REPLACEMENT POLICY IS %zd\n", fs->replacementPolicy);
+    printf("MAX NUM OF FILES IS %zd\n", fs->maxNumOfFiles);
+    printf("MAX FILE-SYSTEM SIZE IN BYTE IS %zd\n", fs->maxStorageSize);
+    printf("CURRENT NUM OF FILES IS %zd\n", fs->currentNumOfFiles);
+    printf("CURRENT FILE-SYSTEM SIZE IN BYTE IS IS %zd\n", fs->currentStorageSize);
     puts("\nFILES INFO:\n");
     List_forEach(fs->filesList, printFileInfo_DEBUG, NULL);
     puts("**************************************************");

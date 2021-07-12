@@ -36,7 +36,7 @@ void *thread(void *args)
     for (int i = 0; i < 100; i++)
     {
         char buf[1000];
-        sprintf(buf, "il thread con pid: %d dice ciao per la %d-esima volta ---", tid, i);
+        sprintf(buf, "il thread con pid: %zd dice ciao per la %zd-esima volta ---", tid, i);
         Logger_log(buf, strlen(buf), &error);
         print(error);
     }
@@ -58,7 +58,7 @@ int main(void)
     for (int i = 0; i < 100; i++)
     {
         char buf[100];
-        sprintf(buf, "%s %d ---", "ciao", i);
+        sprintf(buf, "%s %zd ---", "ciao", i);
         Logger_log(buf, strlen(buf), &error);
         print(error);
     }

@@ -34,20 +34,11 @@ clean:
 	((cd ./test/test3 && rm -rf ./output) || true)
 	((cd ./test/test3 && rm -f log.txt) || true)
 
-test1: clean dist
+test1:
 	(cd test/test1 && bash script.sh)
 
-test1-d: clean debug-d
-	(cd test/test1 && bash script.sh)
-
-test2: clean dist
+test2:
 	(cd test/test2 && bash script.sh)
 
-test2-d: clean debug-d
-	(cd test/test2 && bash script.sh)
-
-test3: clean dist
-	(bash test/test3/script.sh)
-
-test3-d: clean debug-d
+test3:
 	(bash test/test3/script.sh)

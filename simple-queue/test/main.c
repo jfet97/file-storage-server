@@ -94,7 +94,7 @@ void *concurrent_test(void *args)
 
     if (tdp->interrupt)
     {
-        // printf("%d\n", tdp->interrupt);
+        // printf("%zd\n", tdp->interrupt);
         sleep(num / 10);
         SimpleQueue_delete(&(tdp->queue), NULL);
     }

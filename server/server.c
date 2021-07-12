@@ -116,7 +116,7 @@ typedef struct
 {
   int pipe; // pipe with main thread
   FileSystem fs;
-  int resCode;
+  size_t resCode;
 } EvictClientCallbackContext;
 
 // socket file name
@@ -129,13 +129,13 @@ sig_handler_cb(int signum, int pipe)
   int toSend = 0;
 
   char toLog[LOG_LEN] = {0};
-  sprintf(toLog, "Received signal %d -", signum);
+  sprintf(toLog, "Received signal %zd -", signum);
   LOG(toLog);
   FLUSH_LOGGER;
 
   if (signum == SIGTSTP || signum == SIGTERM)
   {
-    printf("\nshutting down soon because of %d...\n", signum);
+    printf("\nshutting down soon because of %zd...\n", signum);
     exit(EXIT_FAILURE);
   }
   else if (signum == SIGQUIT || signum == SIGINT)
@@ -148,7 +148,7 @@ sig_handler_cb(int signum, int pipe)
   }
   else
   {
-    printf("\nUNKNOWN SIGNAL %d!\n", signum);
+    printf("\nUNKNOWN SIGNAL %zd!\n", signum);
     exit(EXIT_FAILURE);
   }
 
@@ -197,13 +197,13 @@ static void evictClientCallback(void *rawCtx, void *rawOid, int *error)
   *error = 0;
   OwnerId *idWithLock = rawOid;
   EvictClientCallbackContext *ctx = rawCtx;
-  int resCode = ctx->resCode;
+  size_t resCode = ctx->resCode;
 
   // this is the id (fd) of the client waiting for the lock on the pathname file
   // we have to signal to this client what has just happened
   AINZ(sendData(idWithLock->id, &resCode, sizeof(resCode)), "cannot respond to a client", *error = -1;)
 
-  if (resCode == -1)
+  if (resCode == 1)
   {
     // the client waits a message
     AINZ(sendData(idWithLock->id, "filesystem file has been removed", strlen("filesystem file has been removed") + 1), "cannot respond to a client", *error = -1;)
@@ -243,7 +243,7 @@ static int evictClient(int fd, FileSystem fs, int pipeWithMainThread)
   id.id = fd;
 
   char toLog[LOG_LEN];
-  sprintf(toLog, "Evicting client (fd) %d -", fd);
+  sprintf(toLog, "Evicting client (fd) %zd -", fd);
   LOG(toLog);
 
   List_T lockers = FileSystem_evictClient(fs, id, &error);
@@ -282,8 +282,23 @@ static int evictClient(int fd, FileSystem fs, int pipeWithMainThread)
   }
 }
 
+static void notifyListEvictedFilesLockers(void *rawCtx, void *rawRF, int *error)
+{
+  ResultFile rf = rawRF;
+  EvictClientCallbackContext *ctx = rawCtx;
+  if (rf->waitingLockers)
+  {
+    EvictClientCallbackContext ctxCC;
+    ctxCC.fs = ctx->fs;
+    ctxCC.pipe = ctx->pipe;
+    ctxCC.resCode = ctx->resCode;
+    List_forEachWithContext(rf->waitingLockers, evictClientCallback, &ctxCC, error);
+  }
+}
+
 // cleanup function
-static void end()
+static void
+end()
 {
   char *sockname = SOCKNAME;
   if (sockname)
@@ -406,11 +421,11 @@ void sendListOfFilesCallback(void *rawCtx, void *rawRF, int *error)
     char toLog[LOG_LEN] = {0};
     if (op == READ_N_FILES)
     {
-      sprintf(toLog, "File %s of size %d was read -", rf->path, rf->size);
+      sprintf(toLog, "File %s of size %zd was read -", rf->path, rf->size);
     }
     if (op == WRITE_FILE || op == APPEND_TO_FILE)
     {
-      sprintf(toLog, "File %s of size %d was evicted -", rf->path, rf->size);
+      sprintf(toLog, "File %s of size %zd was evicted -", rf->path, rf->size);
     }
     LOG(toLog);
 
@@ -418,13 +433,13 @@ void sendListOfFilesCallback(void *rawCtx, void *rawRF, int *error)
     // send the file's content if it is not empty
     if (rf->size)
     {
-      int emptyFile = 0;
+      size_t emptyFile = 0;
       AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", *error = 1;)
       AINZ(sendData(fd, rf->data, rf->size), "cannot respond to a client", *error = 1;)
     }
     else
     {
-      int emptyFile = 1;
+      size_t emptyFile = 1;
       AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", *error = 1;)
     }
   }
@@ -460,7 +475,7 @@ static void *worker(void *args)
       int sendBackFileDescriptor = 0;
 
       // read the operation
-      int op = 0;
+      size_t op = 0;
       HANDLE_WRNS(
           readn(fd, &op, sizeof(op)),
           sizeof(op),
@@ -491,7 +506,7 @@ static void *worker(void *args)
         {
           char *pathname = NULL;
           size_t pathLen;
-          int flags;
+          size_t flags;
           if (getData(fd, &pathname, &pathLen, 1) != 0)
           {
             closeConnection = 1;
@@ -509,17 +524,17 @@ static void *worker(void *args)
             else
             {
               char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "Requested OPEN_FILE operation from client %d. File %.*s with flags %d -", fd, (int)pathLen, pathname, flags);
+              sprintf(toLog, "Requested OPEN_FILE operation from client %zd. File %.*s with flags %zd -", fd, (int)pathLen, pathname, flags);
               LOG(toLog);
 
               ResultFile rf = FileSystem_openFile(fs, pathname, flags, id, &error);
-              int resCode = 0;
+              size_t resCode = 0;
               if (error)
               {
                 // in case of file-system error send a resCode of -1 and an error message
                 // but do not close the connection
                 // Note: a finer error handling would be possible and should be done in a real application
-                resCode = -1;
+                resCode = 1;
                 const char *mess = FileSystem_getErrorMessage(error);
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
                 AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -531,11 +546,11 @@ static void *worker(void *args)
                 if (rf)
                 {
                   char toLog[LOG_LEN] = {0};
-                  sprintf(toLog, "File %s of size %d was evicted -", rf->path, rf->size);
+                  sprintf(toLog, "File %s of size %zd was evicted -", rf->path, rf->size);
                   LOG(toLog);
 
                   // and the evicted file, if any
-                  int evicted = 1;
+                  size_t evicted = 1;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
                   // send the file's path
                   AINZ(sendData(fd, rf->path, strlen(rf->path) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -544,20 +559,28 @@ static void *worker(void *args)
                   // send the file's content if it is not empty
                   if (rf->size)
                   {
-                    int emptyFile = 0;
+                    size_t emptyFile = 0;
                     AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
                     AINZ(sendData(fd, rf->data, rf->size), "cannot respond to a client", closeConnection = 1;)
                   }
                   else
                   {
-                    int emptyFile = 1;
+                    size_t emptyFile = 1;
                     AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
                   }
+
+                  // the file may have some clients waiting the lock that have to be notified
+                  EvictClientCallbackContext ctx;
+                  ctx.fs = fs;
+                  ctx.pipe = pipe;
+                  ctx.resCode = 1; // indicates failure
+                  List_forEachWithContext((rf->waitingLockers), evictClientCallback, &ctx, &error);
+
                   ResultFile_free(&rf, NULL);
                 }
                 else
                 {
-                  int evicted = 0;
+                  size_t evicted = 0;
                   AINZ(sendData(fd, &evicted, sizeof(evicted)), "cannot respond to a client", closeConnection = 1;)
                 }
               }
@@ -586,17 +609,17 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested READ_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested READ_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             ResultFile rf = FileSystem_readFile(fs, pathname, id, &error);
-            int resCode = 0;
+            size_t resCode = 0;
             if (error || rf == NULL)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -607,7 +630,7 @@ static void *worker(void *args)
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
 
               char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "File %s of size %d was read -", rf->path, rf->size);
+              sprintf(toLog, "File %s of size %zd was read -", rf->path, rf->size);
               LOG(toLog);
 
               // send a message to say if the evicted file was empty or not
@@ -615,13 +638,13 @@ static void *worker(void *args)
 
               if (rf->size)
               {
-                int emptyFile = 0;
+                size_t emptyFile = 0;
                 AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
                 AINZ(sendData(fd, rf->data, rf->size), "cannot respond to a client", closeConnection = 1;)
               }
               else
               {
-                int emptyFile = 1;
+                size_t emptyFile = 1;
                 AINZ(sendData(fd, &emptyFile, sizeof(emptyFile)), "cannot respond to a client", closeConnection = 1;)
               }
               ResultFile_free(&rf, NULL);
@@ -666,23 +689,23 @@ static void *worker(void *args)
               char toLog[LOG_LEN] = {0};
               if (isWrite)
               {
-                sprintf(toLog, "Requested WRITE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+                sprintf(toLog, "Requested WRITE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
               }
               else
               {
-                sprintf(toLog, "Requested APPEND_TO_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+                sprintf(toLog, "Requested APPEND_TO_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
               }
               LOG(toLog);
 
               List_T evictedFiles = FileSystem_appendToFile(fs, pathname, buf, bufLen, id, isWrite, &error);
 
-              int resCode = 0;
+              size_t resCode = 0;
               if (error || evictedFiles == NULL)
               {
                 // in case of file-system error send a resCode of -1 and an error message
                 // but do not close the connection
                 // Note: a finer error handling would be possible and should be done in a real application
-                resCode = -1;
+                resCode = 1;
                 const char *mess = FileSystem_getErrorMessage(error);
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
                 AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -693,7 +716,7 @@ static void *worker(void *args)
                 AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
 
                 // send num of evicted files
-                int numOfEvictedFiles = List_length(evictedFiles, NULL);
+                size_t numOfEvictedFiles = List_length(evictedFiles, NULL);
                 AINZ(sendData(fd, &numOfEvictedFiles, sizeof(numOfEvictedFiles)), "cannot respond to a client", closeConnection = 1;)
 
                 // send each evicted file
@@ -701,6 +724,12 @@ static void *worker(void *args)
                 ctx.fd = fd;
                 ctx.op = op;
                 List_forEachWithContext(evictedFiles, sendListOfFilesCallback, &ctx, &error);
+
+                EvictClientCallbackContext ctx2;
+                ctx2.fs = fs;
+                ctx2.pipe = pipe;
+                ctx2.resCode = 1; // indicate failure
+                List_forEachWithContext(evictedFiles, notifyListEvictedFilesLockers, &ctx2, &error);
 
                 if (error)
                 {
@@ -724,7 +753,7 @@ static void *worker(void *args)
         }
         case READ_N_FILES:
         {
-          int N = 0;
+          size_t N = 0;
 
           if (getData(fd, &N, NULL, 0) != 0)
           {
@@ -733,18 +762,18 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested READ_N_FILES operation from client %d. N %d -", fd, N);
+            sprintf(toLog, "Requested READ_N_FILES operation from client %zd. N %zd -", fd, N);
             LOG(toLog);
 
             List_T rfs = FileSystem_readNFile(fs, id, N, &error);
 
-            int resCode = 0;
+            size_t resCode = 0;
             if (error || rfs == NULL)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -755,7 +784,7 @@ static void *worker(void *args)
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
 
               // send num of read files
-              int numOfReadFiles = List_length(rfs, NULL);
+              size_t numOfReadFiles = List_length(rfs, NULL);
               AINZ(sendData(fd, &numOfReadFiles, sizeof(numOfReadFiles)), "cannot respond to a client", closeConnection = 1;)
 
               // send each read file
@@ -795,17 +824,17 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested CLOSE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested CLOSE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             FileSystem_closeFile(fs, pathname, id, &error);
-            int resCode = 0;
+            size_t resCode = 0;
             if (error)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -839,19 +868,19 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested REMOVE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested REMOVE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             // if there were clients waiting for the lock on this file, we have to notify them
             List_T clientsThatWillNotGetTheLock = FileSystem_removeFile(fs, pathname, id, &error);
 
-            int resCode = 0;
+            size_t resCode = 0;
             if (error)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -866,7 +895,7 @@ static void *worker(void *args)
             EvictClientCallbackContext ctx;
             ctx.fs = fs;
             ctx.pipe = pipe;
-            ctx.resCode = -1;
+            ctx.resCode = 1;
 
             int error = 0;
             if (clientsThatWillNotGetTheLock)
@@ -902,11 +931,11 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested LOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested LOCK_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             FileSystem_lockFile(fs, pathname, id, &error);
-            int resCode = 0;
+            size_t resCode = 0;
             if (error == E_FS_FILE_IS_LOCKED)
             {
               // in such a case the fd has been saved internally by the file-system
@@ -917,7 +946,7 @@ static void *worker(void *args)
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -952,17 +981,17 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested UNLOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested UNLOCK_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             OwnerId *idWithLock = FileSystem_unlockFile(fs, pathname, id, &error);
-            int resCode = 0;
+            size_t resCode = 0;
             if (error)
             {
               // in case of file-system error send a resCode of -1 and an error message
               // but do not close the connection
               // Note: a finer error handling would be possible and should be done in a real application
-              resCode = -1;
+              resCode = 1;
               const char *mess = FileSystem_getErrorMessage(error);
               AINZ(sendData(fd, &resCode, sizeof(resCode)), "cannot respond to a client", closeConnection = 1;)
               AINZ(sendData(fd, mess, strlen(mess) + 1), "cannot respond to a client", closeConnection = 1;)
@@ -976,7 +1005,7 @@ static void *worker(void *args)
               {
                 // this is the id (fd) of the client waiting for the lock on the pathname file that just got it
                 // we have to signal to this client what has just happened
-                int resCode = 0;
+                size_t resCode = 0;
                 int error = 0;
                 AINZ(sendData(idWithLock->id, &resCode, sizeof(resCode)), "cannot respond to a client", error = 1;)
 
@@ -1255,7 +1284,7 @@ int main(int argc, char **argv)
     AAINZ(pthread_create(workers + i, NULL, worker, &ctx), "creation of a worker thread has failed")
   }
   char toLog[LOG_LEN] = {0};
-  sprintf(toLog, "%d workers launched -", N_OF_WORKERS);
+  sprintf(toLog, "%zd workers launched -", N_OF_WORKERS);
   LOG(toLog)
 
   // ----------------------------------------------------------------------
@@ -1334,7 +1363,7 @@ int main(int argc, char **argv)
             nOfConnectedClients++;
 
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "New connection, %d clients currently connected -", nOfConnectedClients);
+            sprintf(toLog, "New connection, %zd clients currently connected -", nOfConnectedClients);
             LOG(toLog)
 
             // connection handling
@@ -1364,7 +1393,7 @@ int main(int argc, char **argv)
                 // decrease the number of connected clients
                 nOfConnectedClients--;
                 char toLog[LOG_LEN] = {0};
-                sprintf(toLog, "A client has disconnected, %d clients currently connected -", nOfConnectedClients);
+                sprintf(toLog, "A client has disconnected, %zd clients currently connected -", nOfConnectedClients);
                 LOG(toLog)
               }
               else
@@ -1392,7 +1421,7 @@ int main(int argc, char **argv)
           else
           { // if an already known client (fd) has a new request, send it to the workers
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Request received from client (fd) %d -", fd);
+            sprintf(toLog, "Request received from client (fd) %zd -", fd);
             LOG(toLog)
 
             // remove the fd from the set

@@ -42,7 +42,7 @@
 #define PRINT_OWNER_ID(O)             \
     puts("------------------------"); \
     puts("Owner Id:");                \
-    printf("%d\n", O->id);            \
+    printf("%zd\n", O->id);           \
     puts("------------------------");
 
 void printResultFile(void *rawFile, int *_)
@@ -57,24 +57,24 @@ void printOids(void *rawOid, int *_)
     PRINT_OWNER_ID(oid);
 }
 
-#define PRINT_FS_STATS(FS, E)                                              \
-    puts("-----------------------------------\nSTART FS STATS\n");         \
-    printf("NUM OF FILES: %d\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
-    printf("SIZE: %d\n", ResultFile_getCurrentSizeInByte(FS, &E));         \
-    {                                                                      \
-        Paths ps = ResultFile_getStoredFilesPaths(FS, &E);                 \
-        if (ps)                                                            \
-        {                                                                  \
-            puts("PATHS:");                                                \
-            char **runner = ps->paths;                                     \
-            while (*runner)                                                \
-            {                                                              \
-                puts(*runner++);                                           \
-            }                                                              \
-        }                                                                  \
-        free(ps->paths);                                                   \
-        free(ps);                                                          \
-    }                                                                      \
+#define PRINT_FS_STATS(FS, E)                                               \
+    puts("-----------------------------------\nSTART FS STATS\n");          \
+    printf("NUM OF FILES: %zd\n", ResultFile_getCurrentNumOfFiles(FS, &E)); \
+    printf("SIZE: %zd\n", ResultFile_getCurrentSizeInByte(FS, &E));         \
+    {                                                                       \
+        Paths ps = ResultFile_getStoredFilesPaths(FS, &E);                  \
+        if (ps)                                                             \
+        {                                                                   \
+            puts("PATHS:");                                                 \
+            char **runner = ps->paths;                                      \
+            while (*runner)                                                 \
+            {                                                               \
+                puts(*runner++);                                            \
+            }                                                               \
+        }                                                                   \
+        free(ps->paths);                                                    \
+        free(ps);                                                           \
+    }                                                                       \
     puts("\nEND FS STATS\n-----------------------------------\n");
 
 #define IGNORE_QUEUE_OF_RES_FILE(A, R, E) \
@@ -194,7 +194,7 @@ int main(void)
     FileSystem_lockFile(fs, PATH_FILE_2, client_2, &error); // should fail successfully
     print(&error);
     oid = FileSystem_unlockFile(fs, PATH_FILE_2, client_1, &error);
-    printf("%d should be %d\n", client_2.id, oid->id);
+    printf("%zd should be %zd\n", client_2.id, oid->id);
     free(oid);
     PRINT_FS_STATS(fs, error);
 
@@ -306,7 +306,7 @@ int main(void)
     // ---------------------------------------------------------------------------------------------------------------------------------------------
 
     FileSystem_delete(&fs, &error);
-    printf("Error: %d\n", error);
+    printf("Error: %zd\n", error);
 
     puts("well done!");
 }

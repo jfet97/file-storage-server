@@ -95,7 +95,7 @@
 #define PRINT_OWNER_ID(O)           \
   puts("------------------------"); \
   puts("Owner Id:");                \
-  printf("%d\n", O->id);            \
+  printf("%zd\n", O->id);           \
   puts("------------------------");
 
 typedef struct
@@ -172,8 +172,8 @@ void *worker(void *arg)
 
     puts("--------------------------");
     puts(ctx->files[file].path);
-    printf("action %d\n", action);
-    printf("id thread %d\n", gettid());
+    printf("action %zd\n", action);
+    printf("id thread %zd\n", gettid());
     puts("--------------------------\n");
 
     switch (action)
@@ -260,7 +260,7 @@ void *worker(void *arg)
         OwnerId *oid = FileSystem_unlockFile(ctx->fs, ctx->files[file].path, id, &error);
         if (oid)
         {
-          D(printf("id lock: %d\n", oid->id);)
+          D(printf("id lock: %zd\n", oid->id);)
           free(oid);
         }
       }

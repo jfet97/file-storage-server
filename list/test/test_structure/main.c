@@ -20,7 +20,7 @@ void print(void *vp, int *error)
 {
     Person *p = vp;
 
-    printf("AGE: %d --- ", p->age);
+    printf("AGE: %zd --- ", p->age);
     printf("NAME: %s\n", p->name);
 }
 
@@ -63,7 +63,7 @@ void free_person(void *vp)
     free(p->name);
 }
 #define DEBUG_NUMBER(N, M) \
-    printf("%d should be %d\n", N, M);
+    printf("%zd should be %zd\n", N, M);
 
 #define DEBUG_P_NUMBER(P, N) \
     DEBUG_NUMBER(*P, N);
@@ -447,7 +447,7 @@ int main()
     List_insertHead(people, p4, &error);
 
     Person *pr1 = List_searchExtract(people, sameAge, &f1, &error);
-    printf("%d should be 4\n", pr1->age);
+    printf("%zd should be 4\n", pr1->age);
     DEBUG_NUMBER(List_length(people, &error), 0);
     List_forEach(people, print, &error);
 
@@ -456,7 +456,7 @@ int main()
     List_insertHead(people, p4, &error);
     List_insertHead(people, p5, &error);
     pr1 = List_searchExtract(people, sameAge, &f1, &error);
-    printf("%d should be 4\n", pr1->age);
+    printf("%zd should be 4\n", pr1->age);
     DEBUG_NUMBER(List_length(people, &error), 1);
     List_forEach(people, print, &error);
 
@@ -464,7 +464,7 @@ int main()
 
     List_insertHead(people, p4, &error);
     pr1 = List_searchExtract(people, sameAge, &f1, &error);
-    printf("%d should be 4\n", pr1->age);
+    printf("%zd should be 4\n", pr1->age);
     DEBUG_NUMBER(List_length(people, &error), 1);
     List_forEach(people, print, &error);
 
@@ -473,7 +473,7 @@ int main()
     List_insertHead(people, p4, &error);
     List_insertHead(people, p3, &error);
     pr1 = List_searchExtract(people, sameAge, &f1, &error);
-    printf("%d should be 4\n", pr1->age);
+    printf("%zd should be 4\n", pr1->age);
     DEBUG_NUMBER(List_length(people, &error), 2);
     List_forEach(people, print, &error);
 
