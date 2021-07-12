@@ -13,7 +13,7 @@ struct Arguments
     Option *internal_list;
 };
 
-Option *Option_create(char op, char *param)
+static Option *Option_create(char op, char *param)
 {
     Option *newOption = malloc(sizeof(*newOption));
 
@@ -26,12 +26,13 @@ Option *Option_create(char op, char *param)
     return newOption;
 }
 
-void Option_free(Option **optionPtr)
+static void Option_free(Option **optionPtr)
 {
     free(*optionPtr);
     *optionPtr = NULL;
 }
 
+// reverse a list of Option
 static void reverse(Option **nodePtr, Option* previous)
 {
 
@@ -61,6 +62,7 @@ static void reverse(Option **nodePtr, Option* previous)
     self->next = previous;       // rotate my next pointer with the address of my previous element
 }
 
+// insert an option into an Option list
 static int insert(Option **listPtr, Option *newNode)
 {
     int codeToRet = 0;
@@ -78,6 +80,7 @@ static int insert(Option **listPtr, Option *newNode)
     return codeToRet;
 }
 
+// free an option list
 static void forceFree(Option **listPtr)
 {
     if (listPtr && *listPtr)
@@ -87,13 +90,13 @@ static void forceFree(Option **listPtr)
     }
 }
 
+// count the number of dashes preceeding an option
 static int isOpCountDashes(const char *str)
 {
     int dashCounter = 0;
 
     if (str != NULL)
     {
-        // leggo e conto i dash
         while (*str++ == '-')
         {
             dashCounter++;
@@ -104,11 +107,10 @@ static int isOpCountDashes(const char *str)
         dashCounter = -1;
     }
 
-    // if(dashCounter == 0) e' stato letto un param
-
     return dashCounter;
 }
 
+// parse an argument list
 Arguments CommandLineParser_parseArguments(char *argv[], int *error)
 {
     int errToSet = 0;
@@ -134,56 +136,49 @@ Arguments CommandLineParser_parseArguments(char *argv[], int *error)
         as->internal_list = NULL;
     }
 
-    // per ogni argomento
+    // do it for each argv argument
     while (!errToSet && (arg = *argv++) != NULL)
     {
 
-        // determino lo stato corrente
+        // get the current state
         int is_WAIT_OP = strncmp(WAIT_OP, state, strlen(WAIT_OP)) == 0;
         int is_WAIT_PARAM = strncmp(WAIT_PARAM, state, strlen(WAIT_PARAM)) == 0;
 
-        // conto il numero di dash per determinare cosa ho letto: op o param?
+        // count the number of dashes to determine what has been read: an option or a param?
         int dashCounter = isOpCountDashes(arg);
 
         if (dashCounter == 0 && is_WAIT_OP)
         {
-            // e' stato letto un param solitario da ignorare
+            // a lonely param to be ignored
             continue;
         }
 
         if (dashCounter == 0 && is_WAIT_PARAM)
         {
-            // e' stato letto il param che attendevo
+            // the waited param was read
             option->param = arg;
             insert(&(as->internal_list), option);
             option = NULL;
 
-            // successivamente aspetto una nuova op
+            // wait for a new option
             state = WAIT_OP;
             continue;
         }
 
         if (dashCounter != 0 && is_WAIT_PARAM)
         {
-            // e' stata letta una nuova op quando attendevamo il param della precedente
-
-            // param che allora non esiste
+            // a new option was read during the waiting for a parameter
+            // so param is null
             option->param = NULL;
             insert(&(as->internal_list), option);
             option = NULL;
         }
 
-        // ho letto una nuova op che trovo in arg+dashCounter
+        // a new option was read that is located in arg+dashCounter
         arg += dashCounter;
 
-        // puts(arg);
-
-        // prelevo l'option
+        // get the option
         const char op = *arg++;
-
-        // printf("op %c\n", op);
-
-        // creo la nuova option
         option = Option_create(op, NULL);
 
         if (!option)
@@ -194,18 +189,18 @@ Arguments CommandLineParser_parseArguments(char *argv[], int *error)
 
         if (*arg == '\0')
         {
-            // ho letto un opzione senza parametro che devo cercare di leggere nel prossimo argomento
+            // an option without a param was read, so we have to wait it
             state = WAIT_PARAM;
             continue;
         }
         else
         {
-            // prendo come parametro il rimanente dell'argomento
+            // the param is what remains of the current arg
             option->param = arg;
             insert(&(as->internal_list), option);
             option = NULL;
 
-            // attendo prossima op
+            // wait for another option
             state = WAIT_OP;
             continue;
         }
@@ -213,7 +208,7 @@ Arguments CommandLineParser_parseArguments(char *argv[], int *error)
 
     if (!errToSet && option != NULL && strncmp(WAIT_PARAM, state, strlen(WAIT_PARAM)) == 0)
     {
-        // è rimasta in sospeso una option senza parametro -> param sarà NULL
+        // the last option was missing the param
         option->param = NULL;
         insert(&(as->internal_list), option);
     }
@@ -235,6 +230,7 @@ Arguments CommandLineParser_parseArguments(char *argv[], int *error)
     return as;
 }
 
+// free an Arguments instance
 void CommandLineParser_delete(Arguments *argsPtr, int *error)
 {
     int errToSet = 0;
@@ -253,6 +249,7 @@ void CommandLineParser_delete(Arguments *argsPtr, int *error)
     error && (*error = errToSet);
 }
 
+// print the read arguments
 void CommandLineParser_printArguments(Arguments args, int *error)
 {
     int errToSet = 0;
@@ -272,6 +269,7 @@ void CommandLineParser_printArguments(Arguments args, int *error)
     error && (*error = errToSet);
 }
 
+// get the arguments (option list)
 Option *CommandLineParser_getArguments(Arguments args, int *error)
 {
     int errToSet = 0;
