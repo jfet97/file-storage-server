@@ -505,8 +505,8 @@ static void *worker(void *args)
         case OPEN_FILE:
         {
           char *pathname = NULL;
-          size_t pathLen;
-          size_t flags;
+          size_t pathLen = 0;
+          size_t flags = 0;
           if (getData(fd, &pathname, &pathLen, 1) != 0)
           {
             closeConnection = 1;
