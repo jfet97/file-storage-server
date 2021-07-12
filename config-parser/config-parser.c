@@ -116,6 +116,7 @@ static int readLineFromFILE(char *buffer, unsigned int len, FILE *fp)
 // -------------------------------
 // API
 
+// parse a config file
 ConfigParser ConfigParser_parse(const char *path, int *error)
 {
 
@@ -127,6 +128,7 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
         errToSet = E_CP_MALLOC;
     })
 
+    // it uses an internal list
     if (!errToSet)
     {
         parser->internal_list = NULL;
@@ -140,9 +142,9 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
     if (!errToSet)
     {
         char buf[MAX_CONFIG_LEN];
-
+        
+        // read and parse each line
         int read_res = readLineFromFILE(buf, MAX_CONFIG_LEN, file);
-
         while (read_res == 0 && !errToSet)
         {
             InternalListNode *newNode = malloc(sizeof(*newNode));
@@ -151,6 +153,7 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
                 errToSet = E_CP_MALLOC;
             })
 
+            // format: KEY,VALUE
             if (newNode)
             {
                 char *state = NULL;
@@ -200,6 +203,7 @@ ConfigParser ConfigParser_parse(const char *path, int *error)
     return parser;
 }
 
+// free a config parser instance
 void ConfigParser_delete(ConfigParser *parserPtr, int *error)
 {
     int errToSet = 0;
@@ -219,6 +223,7 @@ void ConfigParser_delete(ConfigParser *parserPtr, int *error)
     error && (*error = errToSet);
 }
 
+// get a value given a certain key
 char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, int *error)
 {
 
@@ -244,6 +249,7 @@ char *ConfigParser_getValue(ConfigParser parserPtr, const char *key, int *error)
     return toRet;
 }
 
+// print all the parsed configs
 void ConfigParser_printConfigs(ConfigParser parserPtr, int *error)
 {
     int errToSet = 0;

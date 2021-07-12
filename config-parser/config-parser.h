@@ -1,7 +1,8 @@
-#include <stddef.h>
-
+// parse a config.txt file
 #ifndef CONFIG_PARSER__
 #define CONFIG_PARSER__
+
+#include <stddef.h>
 
 #define E_CP_MALLOC 1
 #define E_CP_FILE 2
