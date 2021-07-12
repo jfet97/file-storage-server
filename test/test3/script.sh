@@ -34,3 +34,5 @@ for i in "${CLS[@]}"; do
     kill -9 ${i}
     wait ${i}
 done
+
+exit 0

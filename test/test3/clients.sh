@@ -16,3 +16,5 @@ do
     i=$(( RANDOM % ${#clients[@]}))
     ./client/bin/client ${clients[i]} -p &> ./test/test3/output/client${i}_${MY_ID}.txt
 done
+
+exit 0

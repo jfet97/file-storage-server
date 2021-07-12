@@ -62,3 +62,5 @@ sleep 5
 kill -1 $SERVER_PID
 
 wait $SERVER_PID
+
+exit 0
