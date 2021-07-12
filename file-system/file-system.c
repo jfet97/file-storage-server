@@ -2803,7 +2803,7 @@ void printOwnerIdInfo_DEBUG(void *rawOwnerId, int *_)
 {
     OwnerId *oid = rawOwnerId;
     puts("@@@@@@@@@@@@@@@@@@@");
-    printf("OwnerId is %zd\n", oid->id);
+    printf("OwnerId is %d\n", oid->id);
     puts("@@@@@@@@@@@@@@@@@@@");
 }
 
@@ -2816,8 +2816,8 @@ void printFileInfo_DEBUG(void *rawFile, int *_)
     printf("File Path is: %s\n", file->path);
     printf("File Data is: %s\n", file->data);
     printf("File Size is: %zd\n", file->size);
-    printf("file->currentlyLockedBy is: %zd\n", file->currentlyLockedBy.id);
-    printf("file->ownerCanWrite is: %zd\n", file->ownerCanWrite.id);
+    printf("file->currentlyLockedBy is: %d\n", file->currentlyLockedBy.id);
+    printf("file->ownerCanWrite is: %d\n", file->ownerCanWrite.id);
     puts("Openers Queue:");
     List_forEach(file->openedBy, printOwnerIdInfo_DEBUG, NULL);
     puts("\nLock Waiting Queue:");
@@ -2833,7 +2833,7 @@ void FileSystem_printAll_DEBUG(FileSystem fs)
     puts("**************************************************");
     puts("**************************************************");
     puts("FileSystem DEBUG INFO");
-    printf("REPLACEMENT POLICY IS %zd\n", fs->replacementPolicy);
+    printf("REPLACEMENT POLICY IS %d\n", fs->replacementPolicy);
     printf("MAX NUM OF FILES IS %zd\n", fs->maxNumOfFiles);
     printf("MAX FILE-SYSTEM SIZE IN BYTE IS %zd\n", fs->maxStorageSize);
     printf("CURRENT NUM OF FILES IS %zd\n", fs->currentNumOfFiles);

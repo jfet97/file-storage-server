@@ -129,13 +129,13 @@ sig_handler_cb(int signum, int pipe)
   int toSend = 0;
 
   char toLog[LOG_LEN] = {0};
-  sprintf(toLog, "Received signal %zd -", signum);
+  sprintf(toLog, "Received signal %d -", signum);
   LOG(toLog);
   FLUSH_LOGGER;
 
   if (signum == SIGTSTP || signum == SIGTERM)
   {
-    printf("\nshutting down soon because of %zd...\n", signum);
+    printf("\nshutting down soon because of %d...\n", signum);
     exit(EXIT_FAILURE);
   }
   else if (signum == SIGQUIT || signum == SIGINT)
@@ -148,7 +148,7 @@ sig_handler_cb(int signum, int pipe)
   }
   else
   {
-    printf("\nUNKNOWN SIGNAL %zd!\n", signum);
+    printf("\nUNKNOWN SIGNAL %d!\n", signum);
     exit(EXIT_FAILURE);
   }
 
@@ -243,7 +243,7 @@ static int evictClient(int fd, FileSystem fs, int pipeWithMainThread)
   id.id = fd;
 
   char toLog[LOG_LEN];
-  sprintf(toLog, "Evicting client (fd) %zd -", fd);
+  sprintf(toLog, "Evicting client (fd) %d -", fd);
   LOG(toLog);
 
   List_T lockers = FileSystem_evictClient(fs, id, &error);
@@ -524,7 +524,7 @@ static void *worker(void *args)
             else
             {
               char toLog[LOG_LEN] = {0};
-              sprintf(toLog, "Requested OPEN_FILE operation from client %zd. File %.*s with flags %zd -", fd, (int)pathLen, pathname, flags);
+              sprintf(toLog, "Requested OPEN_FILE operation from client %d. File %.*s with flags %zd -", fd, (int)pathLen, pathname, flags);
               LOG(toLog);
 
               ResultFile rf = FileSystem_openFile(fs, pathname, flags, id, &error);
@@ -609,7 +609,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested READ_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested READ_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             ResultFile rf = FileSystem_readFile(fs, pathname, id, &error);
@@ -689,11 +689,11 @@ static void *worker(void *args)
               char toLog[LOG_LEN] = {0};
               if (isWrite)
               {
-                sprintf(toLog, "Requested WRITE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+                sprintf(toLog, "Requested WRITE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
               }
               else
               {
-                sprintf(toLog, "Requested APPEND_TO_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+                sprintf(toLog, "Requested APPEND_TO_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
               }
               LOG(toLog);
 
@@ -762,7 +762,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested READ_N_FILES operation from client %zd. N %zd -", fd, N);
+            sprintf(toLog, "Requested READ_N_FILES operation from client %d. N %zd -", fd, N);
             LOG(toLog);
 
             List_T rfs = FileSystem_readNFile(fs, id, N, &error);
@@ -824,7 +824,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested CLOSE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested CLOSE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             FileSystem_closeFile(fs, pathname, id, &error);
@@ -868,7 +868,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested REMOVE_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested REMOVE_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             // if there were clients waiting for the lock on this file, we have to notify them
@@ -931,7 +931,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested LOCK_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested LOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             FileSystem_lockFile(fs, pathname, id, &error);
@@ -981,7 +981,7 @@ static void *worker(void *args)
           else
           {
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Requested UNLOCK_FILE operation from client %zd. File %.*s -", fd, (int)pathLen, pathname);
+            sprintf(toLog, "Requested UNLOCK_FILE operation from client %d. File %.*s -", fd, (int)pathLen, pathname);
             LOG(toLog);
 
             OwnerId *idWithLock = FileSystem_unlockFile(fs, pathname, id, &error);
@@ -1363,7 +1363,7 @@ int main(int argc, char **argv)
             nOfConnectedClients++;
 
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "New connection, %zd clients currently connected -", nOfConnectedClients);
+            sprintf(toLog, "New connection, %d clients currently connected -", nOfConnectedClients);
             LOG(toLog)
 
             // connection handling
@@ -1393,7 +1393,7 @@ int main(int argc, char **argv)
                 // decrease the number of connected clients
                 nOfConnectedClients--;
                 char toLog[LOG_LEN] = {0};
-                sprintf(toLog, "A client has disconnected, %zd clients currently connected -", nOfConnectedClients);
+                sprintf(toLog, "A client has disconnected, %d clients currently connected -", nOfConnectedClients);
                 LOG(toLog)
               }
               else
@@ -1421,7 +1421,7 @@ int main(int argc, char **argv)
           else
           { // if an already known client (fd) has a new request, send it to the workers
             char toLog[LOG_LEN] = {0};
-            sprintf(toLog, "Request received from client (fd) %zd -", fd);
+            sprintf(toLog, "Request received from client (fd) %d -", fd);
             LOG(toLog)
 
             // remove the fd from the set
