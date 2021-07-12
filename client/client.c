@@ -822,7 +822,7 @@ int main(int argc, char **argv)
       {
         if (allowPrints)
         {
-          printf("%zd files has been read\n", r);
+          printf("%d files has been read\n", r);
         }
       }
 

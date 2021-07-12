@@ -1284,7 +1284,7 @@ int main(int argc, char **argv)
     AAINZ(pthread_create(workers + i, NULL, worker, &ctx), "creation of a worker thread has failed")
   }
   char toLog[LOG_LEN] = {0};
-  sprintf(toLog, "%zd workers launched -", N_OF_WORKERS);
+  sprintf(toLog, "%d workers launched -", N_OF_WORKERS);
   LOG(toLog)
 
   // ----------------------------------------------------------------------
