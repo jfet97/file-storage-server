@@ -544,7 +544,6 @@ int openFile(const char *pathname, int flags)
 
             if (!error)
             {
-              P(printf("%.*s\n", (int)dataLen, (char *)data);)
               AINZ(writeLocalFile(filepath, data, dataLen, homeDirEvictedFiles), "write process in openFile to local disk has failed", ;)
             }
 

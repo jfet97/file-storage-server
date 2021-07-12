@@ -405,9 +405,6 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
             errToSet = E_SQ_MUTEX_LOCK;
         })
 
-        puts("SimpleQueue instance is busy, waiting before deletion...");
-        fflush(stdout);
-
         if (hasQueueLock && !errToSet)
         {
             hasQueueLock = 0;

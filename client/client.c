@@ -392,8 +392,17 @@ static int readNFilesFromDir(const char *dirname, int *nPtr, List_T readFiles)
   return 0;
 }
 
+// cleanup function
+static void end()
+{
+  puts("Client is shutting down...");
+}
+
 int main(int argc, char **argv)
 {
+
+  // set cleanup function
+  AAINZ(atexit(end), "set of the cleanup function has failed", return -1;)
 
   // control flow flags
   int error = 0;
@@ -544,7 +553,7 @@ int main(int argc, char **argv)
       AAINO(now, "internal time error", stop = 1; error = 1; break;)
 
       // try for two minutes to connect to the client
-      abstime.tv_sec = now + 120;
+      abstime.tv_sec = now + 20;
       openConnection(socket, timeToWaitBetweenConnections ? timeToWaitBetweenConnections : 100, abstime);
       break;
     }

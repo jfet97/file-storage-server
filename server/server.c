@@ -869,12 +869,14 @@ static void *worker(void *args)
             ctx.resCode = -1;
 
             int error = 0;
-            List_forEachWithContext(clientsThatWillNotGetTheLock, evictClientCallback, &ctx, &error);
-            List_free(&clientsThatWillNotGetTheLock, 1, NULL);
+            if (clientsThatWillNotGetTheLock)
+            {
+              List_forEachWithContext(clientsThatWillNotGetTheLock, evictClientCallback, &ctx, &error);
+              List_free(&clientsThatWillNotGetTheLock, 1, NULL);
+            }
 
             if (error)
             {
-
               perror("error during the eviction of a client");
             }
 
