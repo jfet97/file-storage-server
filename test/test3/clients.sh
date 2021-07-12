@@ -1,5 +1,5 @@
 clients=(
-  '-f ./server/bin/mysocket -w ./local-file-system -D ./test/test3/clients/evicted &> ./test/test3/output/client1.txt'
+  '-f ./server/bin/mysocket -w ./test/local-file-system/ -D ./test/test3/clients/evicted &> ./test/test3/output/client1.txt'
   '-f ./server/bin/mysocket -n  ./test/local-file-system/text-files/lorems/lorem10.txt -c ./test/local-file-system/text-files/lorems/lorem10.txt'
   '-f ./server/bin/mysocket -R n=0 -d ./test/test3/clients/read'
   '-f ./server/bin/mysocket -o ./test/local-file-system/text-files/lorems/lorem1000.txt -l ./test/local-file-system/text-files/lorems/lorem1000.txt -e /test/file/casuale.txt -a ./test/local-file-system/text-files/lorems/lorem1000.txt,/test/file/casuale.txt -r /test/file/casuale.txt -d ./test/test3/clients/read'
@@ -14,5 +14,5 @@ MY_ID=${ID}
 while true 
 do
     i=$(( RANDOM % ${#clients[@]}))
-    ./client/bin/client ${clients[i]} &> ./test/test3/output/client${i}_${MY_ID}.txt
+    ./client/bin/client ${clients[i]} -p &> ./test/test3/output/client${i}_${MY_ID}.txt
 done
