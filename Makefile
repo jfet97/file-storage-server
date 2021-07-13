@@ -21,9 +21,11 @@ debug-d:
 	(cd ./client && make debug)
 	(cd ./server && make debug)
 
-clean:
+clean: test-clean
 	(cd ./client && make clean)
 	(cd ./server && make clean)
+
+test-clean:
 	((cd ./test/test1 && rm -rf ./clients) || true)
 	((cd ./test/test1 && rm -rf ./output) || true)
 	((cd ./test/test1 && rm -f log.txt) || true)
@@ -34,11 +36,11 @@ clean:
 	((cd ./test/test3 && rm -rf ./output) || true)
 	((cd ./test/test3 && rm -f log.txt) || true)
 
-test1: all
+test1: test-clean all
 	(cd test/test1 && bash script.sh)
 
-test2: all
+test2: test-clean all
 	(cd test/test2 && bash script.sh)
 
-test3: all
+test3: test-clean all
 	(bash test/test3/script.sh)
