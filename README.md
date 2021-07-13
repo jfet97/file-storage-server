@@ -2,8 +2,7 @@
 Progetto di Laboratorio di Sistemi Operativi
 
 ## History
+https://user-images.githubusercontent.com/24520167/125462862-fe0180db-e020-4b00-933d-2f3711050612.mp4
 
-
-https://user-images.githubusercontent.com/24520167/125449340-71ed7a65-c21f-484f-90bc-2640b0623f0c.mp4
 
 
