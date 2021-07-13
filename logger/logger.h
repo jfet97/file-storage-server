@@ -1,7 +1,11 @@
-#include <stddef.h>
-
+// thread safe logger to log text strings into a custom output file
+//
+// the logger uses a buffer of dynamic size, on RAM, to save the strings to be logged,
+// buffer that is periodically flushed but can be manually flushed as well
 #ifndef LOGGER__
 #define LOGGER__
+
+#include <stddef.h>
 
 #define E_LOG_MALLOC 1
 #define E_LOG_FILE 2

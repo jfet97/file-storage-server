@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <time.h>
 
+// these are for the internal buffer
 #define MAX_LOG_SIZE 131072
 #define MEDIUM_LOG_SIZE 16384
 #define INITIAL_LOG_SIZE 1024
@@ -54,6 +55,7 @@ struct Logger
 Logger logger = NULL;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
+// simple wrapper around the standard realloc function
 static int realloca(char **buf, size_t newsize)
 {
     int toRet = 0;
@@ -71,6 +73,7 @@ static int realloca(char **buf, size_t newsize)
     return toRet;
 }
 
+// create a logger instance
 void Logger_create(const char *path, int *error)
 {
     int errToSet = 0;
@@ -94,6 +97,7 @@ void Logger_create(const char *path, int *error)
         })
     }
 
+    // if it was not already created, instantiate the logger
     if (!errToSet)
     {
         logger = malloc(sizeof(*logger));
@@ -116,6 +120,7 @@ void Logger_create(const char *path, int *error)
         logger->curr_log_len = 0;
     }
 
+    // open the file where to store the logs
     if (!errToSet)
     {
         logger->file = fopen(path, "w");
@@ -144,6 +149,7 @@ void Logger_create(const char *path, int *error)
     error && (*error = errToSet);
 }
 
+// delete the Logger singleton
 void Logger_delete(int force_free, int *error)
 {
     int errToSet = 0;
@@ -166,7 +172,7 @@ void Logger_delete(int force_free, int *error)
     if (hasLoggerLock)
     {
 
-        // flush del file
+        // flush on the file
         fprintf(logger->file, "%s", logger->log);
         fflush(logger->file);
 
@@ -177,7 +183,6 @@ void Logger_delete(int force_free, int *error)
 
         logger->log[0] = '\0';
 
-        // chiudo anche se e' fallita la flush
         int closeFileSuccessfull = 1;
         NON_ZERO_DO(fclose(logger->file),
                     {
@@ -185,8 +190,7 @@ void Logger_delete(int force_free, int *error)
                         closeFileSuccessfull = 0;
                     })
 
-        // non chiudo se non sono riuscito a chiudere il file
-        // a meno che non sono forzato
+        // can be forced to free the instance
         if (closeFileSuccessfull == 1 || force_free)
         {
             free(logger->log);
@@ -202,6 +206,7 @@ void Logger_delete(int force_free, int *error)
     error && (*error = errToSet);
 }
 
+// log a string
 void Logger_log(const char *toLog, size_t len, int *error)
 {
     int errToSet = 0;
@@ -235,6 +240,7 @@ void Logger_log(const char *toLog, size_t len, int *error)
                     })
     }
 
+    // add a timestamp
     if (!errToSet)
     {
 
@@ -270,6 +276,9 @@ void Logger_log(const char *toLog, size_t len, int *error)
         size_t new_realloc_size = len_to_write * 1.6180339887;
         int do_cat = 0;
 
+        // what to do depends on the lenght of the string to log,
+        // if there is enough space in the buffer or the buffer can be reallocated, the string is stored in it,
+        // otherwise the buffer and the new string are flushed into the file
         if (len_to_write < logger->curr_log_size)
         {
             do_cat = 1;
@@ -280,6 +289,11 @@ void Logger_log(const char *toLog, size_t len, int *error)
                 fprintf(logger->file, "%s%s %s", logger->log, toLog, timestamp), {
                     errToSet = E_LOG_FILE;
                 })
+
+            if (!errToSet)
+            {
+                fflush(logger->file);
+            }
 
             if (!errToSet)
             {
@@ -337,6 +351,7 @@ void Logger_log(const char *toLog, size_t len, int *error)
     error && (*error = errToSet);
 }
 
+// to manually flush to the file
 void Logger_flush(int *error)
 {
     int errToSet = 0;
