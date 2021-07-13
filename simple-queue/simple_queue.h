@@ -1,8 +1,9 @@
-#include <stddef.h>
-#include <pthread.h>
-
+// Thread safe, unbounded queue with super powers
 #ifndef SIMPLE_QUEUE__
 #define SIMPLE_QUEUE__
+
+#include <stddef.h>
+#include <pthread.h>
 
 #define E_SQ_MALLOC 1
 #define E_SQ_MUTEX_LOCK 2

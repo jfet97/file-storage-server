@@ -52,10 +52,15 @@ typedef struct InternalListNode
 // -------------------------------
 // INTERNALS
 
+// internally a list (dictionary) of key-value pairs is stored
+// where the key is the address of a SimpleQueue queue and the value
+// is a structure containing the queue lock, the condition variable and a flag
 InternalListNode *internal_queues_data_list = NULL;
 
+// global lock
 pthread_mutex_t iqdl_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// insert a new SimpleQueue instance
 static int insert(InternalListNode **listPtr, SimpleQueue key, QueueData *value)
 {
     int codeToRet = 0;
@@ -76,6 +81,7 @@ static int insert(InternalListNode **listPtr, SimpleQueue key, QueueData *value)
     return codeToRet;
 }
 
+// search the QueueData corresponding to a SimpleQueue instance by key
 static QueueData *searchByKey(InternalListNode *list, SimpleQueue key)
 {
     if (list == NULL)
@@ -92,6 +98,7 @@ static QueueData *searchByKey(InternalListNode *list, SimpleQueue key)
     }
 }
 
+// delete a SimpleQueue instance by key
 static QueueData *deleteByKey(InternalListNode **listPtr, SimpleQueue key)
 {
     if (listPtr == NULL)
@@ -116,6 +123,7 @@ static QueueData *deleteByKey(InternalListNode **listPtr, SimpleQueue key)
     }
 }
 
+// functions that handle a SimpleNode list
 static SimpleNode *SimpleNode_create(void *element, SimpleNode *next, SimpleNode *prev)
 {
     SimpleNode *newNode = malloc(sizeof(*newNode));
@@ -250,15 +258,28 @@ static void List_deleteHead(SimpleList list)
 // -------------------------------
 // API
 
+// create a new SimpleQueue instance
 SimpleQueue SimpleQueue_create(int *error)
 {
     int errToSet = 0;
     SimpleQueue queueToRet = malloc(sizeof(*queueToRet));
     QueueData *queueData = NULL;
+    int hasDictLock = 0;
 
     if (queueToRet == NULL)
     {
         errToSet = E_SQ_MALLOC;
+    }
+
+    if (!errToSet)
+    {
+        // get the global lock
+        hasDictLock = 1;
+        NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
+                    {
+                        errToSet = E_SQ_MUTEX_LOCK;
+                        hasDictLock = 0;
+                    })
     }
 
     if (!errToSet)
@@ -283,7 +304,7 @@ SimpleQueue SimpleQueue_create(int *error)
     if (!errToSet)
     {
         queueData->to_be_canceled_soon = 0;
-
+        // insert it into the global list (dictionary)
         NON_ZERO_DO(insert(&internal_queues_data_list, queueToRet, queueData), {
             errToSet = E_SQ_GENERAL;
         })
@@ -303,14 +324,21 @@ SimpleQueue SimpleQueue_create(int *error)
         queueData ? free(queueData) : (void)NULL;
         (queueToRet && queueToRet->queue) ? free(queueToRet->queue) : (void)NULL;
         queueToRet ? free(queueToRet) : (void)NULL;
-
         queueToRet = NULL;
+    }
+
+    if (hasDictLock)
+    {
+        NON_ZERO_DO(pthread_mutex_unlock(&iqdl_lock), {
+            errToSet = E_SQ_MUTEX_LOCK;
+        })
     }
 
     error && (*error = errToSet);
     return queueToRet;
 }
 
+// delete a SimpleQueue instance
 void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 {
 
@@ -331,6 +359,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 
     if (!errToSet)
     {
+        // get the global lock
         hasDictLock = 1;
         NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
                     {
@@ -341,7 +370,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 
     if (!errToSet)
     {
-        // printf("queue: %p --- lista interna: %p\n", queue, internal_queues_data_list);
+        // search it into the dictionary
         queue_data = searchByKey(internal_queues_data_list, queue);
         if (queue_data == NULL)
         {
@@ -349,6 +378,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         }
     }
 
+    // avoid multiple deletions
     if (!errToSet)
     {
         if (queue_data->to_be_canceled_soon)
@@ -357,6 +387,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         }
     }
 
+    // get the instance's lock
     if (!errToSet)
     {
         if (!queue_data->to_be_canceled_soon)
@@ -370,11 +401,12 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         }
     }
 
+    // set the deletion flag
     if (hasQueueLock)
     {
         queue_data->to_be_canceled_soon = 1;
 
-        // sveglio con broadcast tutti i lettori eventualmente fermi
+        // broadcast to all stopped readers the fact that the queue is going to be deleted
         NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
             errToSet = E_SQ_MUTEX_LOCK;
         })
@@ -389,18 +421,21 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
     }
 
     int pmd_res = 0;
+    // if pmd_res == EBUSY then the queue cannot be deleted because there are threads
+    // using the lock
     while (!errToSet && ((pmd_res = pthread_mutex_destroy(&(queue_data)->lock)) == EBUSY))
     {
         hasQueueLock = 1;
-        // lascio la possibilita' a thread fermi di accorgersi che stiamo chiudendo
 
+        // other threads can notice, thanks to the to_be_canceled_soon flag,
+        // that the queue is going to be deleted soon
         NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
                     {
                         errToSet = E_SQ_MUTEX_LOCK;
                         hasQueueLock = 0;
                     })
 
-        // sveglio con broadcast tutti i lettori eventualmente fermi
+        // broadcast to all stopped readers the fact that the queue is going to be deleted
         NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
             errToSet = E_SQ_MUTEX_LOCK;
         })
@@ -429,7 +464,6 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         List_free(&(*queuePtr)->queue);
         free(*queuePtr);
         *queuePtr = NULL;
-        // puts("!!! CANCELED !!!");
         fflush(stdout);
     }
 
@@ -448,6 +482,7 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
 // -----------------------------------------------------------------------------
 // ENQUEUE - DEQUEUE
 
+// enqueue something into a SimpleQueue instance
 void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 {
     int errToSet = 0;
@@ -467,6 +502,7 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 
     if (!errToSet)
     {
+        // get the global lock
         hasDictLock = 1;
         NON_ZERO_DO(pthread_mutex_lock(&iqdl_lock),
                     {
@@ -477,6 +513,7 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 
     if (!errToSet)
     {
+        // search the instance into the dictionary
         queue_data = searchByKey(internal_queues_data_list, queue);
         if (queue_data == NULL)
         {
@@ -486,6 +523,7 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 
     if (!errToSet)
     {
+        // left if the queue is going to be canceled soon
         if (queue_data->to_be_canceled_soon)
         {
             errToSet = E_SQ_QUEUE_DELETED;
@@ -511,6 +549,7 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 
     if (!errToSet)
     {
+        // insert the element and notify the readers
         NON_ZERO_DO(List_insertTail(queue->queue, element), {
             errToSet = E_SQ_GENERAL;
         })
@@ -531,6 +570,9 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
     return;
 }
 
+// dequeue something from a SimpleQueue instance,
+// if wait == 0 and there are no elements throws an error,
+// if wait == 1 and there are no elements waits
 void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
 {
 
@@ -566,6 +608,7 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
 
     if (!errToSet)
     {
+        // left if the list is going to be canceled soon
         if (queue_data->to_be_canceled_soon)
         {
             errToSet = E_SQ_QUEUE_DELETED;
@@ -596,6 +639,7 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
 
     if (!errToSet && queue->queue->length == 0 && wait)
     {
+        // wait a signal of the presence of an element
         while (!errToSet && queue->queue->length == 0 && !queue_data->to_be_canceled_soon)
         {
             NON_ZERO_DO(pthread_cond_wait(&(queue_data->read_cond), &(queue_data->lock)), {
