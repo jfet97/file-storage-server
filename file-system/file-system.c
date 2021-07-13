@@ -608,7 +608,8 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
 
         puts("\nFILE SYSTEM FINAL STATS");
         printf("Max number of file stored was: %zd\n", fs->maxNumOfFilesReached);
-        printf("Max Mbytes of space used was: %zd\n", fs->maxByteOfStorageUsed / 1024);
+        printf("Max Mbytes of space used was: %zd\n", fs->maxByteOfStorageUsed / (1024 * 1024));
+        printf("Max Bytes of space used was: %zd\n", fs->maxByteOfStorageUsed);
         printf("Number of times the replacing algorithm has run was: %zd\n", fs->numOfReplacementAlgoRuns);
         puts("Follows a list of files still present in the file-system");
         List_forEach(fs->filesList, printFile, NULL);
@@ -625,7 +626,6 @@ void FileSystem_delete(FileSystem *fsPtr, int *error)
 
     SET_ERROR;
 }
-
 // Evict a file from the file-system
 //
 // Notes:
