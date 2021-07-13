@@ -5,6 +5,10 @@
 
 CFLAGS += -std=c99 -Wall -pedantic -Wno-unused-value
 
+all:
+	(cd ./client && make all)
+	(cd ./server && make all)
+	
 debug: CFLAGS += -g
 debug: clean debug-d
 
@@ -12,10 +16,6 @@ dist: CFLAGS += -O3
 dist: clean all
 
 .PHONY: clean
-
-all:
-	(cd ./client && make all)
-	(cd ./server && make all)
 
 debug-d:
 	(cd ./client && make debug)
