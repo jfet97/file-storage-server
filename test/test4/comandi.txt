@@ -1,0 +1,11 @@
+SERVER
+./server/bin/server ./test/test4/config.txt
+
+CLIENT
+./client/bin/client -f ./server/bin/mysocket -e ./test/file/casuale2.txt -l ./test/file/casuale2.txt -a ./test/local-file-system/text-files/lorems/lorem150.txt,./test/file/casuale2.txt,./test/file/casuale2.txt -u ./test/file/casuale2.txt -r ./test/file/casuale2.txt -s ./test/file/casuale2.txt -r ./test/file/casuale2.txt -p
+
+./client/bin/client -f ./server/bin/mysocket -w ./test/local-file-system/ -D ./test/test4/clients/evicted -c ./test/local-file-system/images/pic1.jpg -c ./test/local-file-system/images/pic2.jpg -c ./test/local-file-system/images/pic3.jpg -p
+
+
+
+p.s. cancellare a mano la cartella 'clients' contenente i file evictati
