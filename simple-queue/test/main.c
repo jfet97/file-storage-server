@@ -32,7 +32,10 @@ void *producer(void *arg)
     for (int i = 0; i < d->num_items; ++i)
     {
         SimpleQueue_enqueue(d->queue, d->unique_message, NULL);
-        usleep(((double)t / RAND_MAX) * 1000);
+        struct timespec time;
+        time.tv_sec = 0;
+        time.tv_nsec = (double)t / RAND_MAX * 1000000;
+        nanosleep(&time, NULL);
     }
 
     return NULL;
@@ -57,7 +60,10 @@ void *consumer(void *arg)
             assert(res == d->unique_message);
         }
 
-        usleep(((double)t / RAND_MAX) * 1000);
+        struct timespec time;
+        time.tv_sec = 0;
+        time.tv_nsec = (double)t / RAND_MAX * 1000000;
+        nanosleep(&time, NULL);
     }
 
     return NULL;

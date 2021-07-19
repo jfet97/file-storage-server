@@ -39,6 +39,8 @@ typedef struct
     pthread_mutex_t lock;
     pthread_cond_t read_cond;
     int to_be_canceled_soon;
+    int active_utilizers;             // <-----
+    pthread_cond_t wait_no_utilizers; // <-----
 } QueueData;
 
 typedef struct InternalListNode
@@ -304,10 +306,8 @@ SimpleQueue SimpleQueue_create(int *error)
     if (!errToSet)
     {
         queueData->to_be_canceled_soon = 0;
+        queueData->active_utilizers = 0; // <-----
         // insert it into the global list (dictionary)
-        NON_ZERO_DO(insert(&internal_queues_data_list, queueToRet, queueData), {
-            errToSet = E_SQ_GENERAL;
-        })
 
         NON_ZERO_DO(pthread_mutex_init(&queueData->lock, NULL), {
             errToSet = E_SQ_MUTEX_LOCK;
@@ -315,6 +315,14 @@ SimpleQueue SimpleQueue_create(int *error)
 
         NON_ZERO_DO(pthread_cond_init(&queueData->read_cond, NULL), {
             errToSet = E_SQ_MUTEX_COND;
+        })
+
+        NON_ZERO_DO(pthread_cond_init(&queueData->wait_no_utilizers, NULL), { // <-----
+            errToSet = E_SQ_MUTEX_COND;
+        })
+
+        NON_ZERO_DO(insert(&internal_queues_data_list, queueToRet, queueData), {
+            errToSet = E_SQ_GENERAL;
         })
     }
 
@@ -401,59 +409,25 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         }
     }
 
-    // set the deletion flag
-    if (hasQueueLock)
+    // set the deletion flag, notify others, if any, and wait their termination
+    if (hasQueueLock) // <-----
     {
         queue_data->to_be_canceled_soon = 1;
 
-        // broadcast to all stopped readers the fact that the queue is going to be deleted
-        NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
-            errToSet = E_SQ_MUTEX_LOCK;
-        })
-
-        hasQueueLock = 0;
-        // lascio la lock sulla queue
-        NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)),
-                    {
-                        errToSet = E_SQ_MUTEX_LOCK;
-                        hasQueueLock = 1;
-                    })
-    }
-
-    int pmd_res = 0;
-    // if pmd_res == EBUSY then the queue cannot be deleted because there are threads
-    // using the lock
-    while (!errToSet && ((pmd_res = pthread_mutex_destroy(&(queue_data)->lock)) == EBUSY))
-    {
-        hasQueueLock = 1;
-
-        // other threads can notice, thanks to the to_be_canceled_soon flag,
-        // that the queue is going to be deleted soon
-        NON_ZERO_DO(pthread_mutex_lock(&(queue_data->lock)),
-                    {
-                        errToSet = E_SQ_MUTEX_LOCK;
-                        hasQueueLock = 0;
-                    })
-
-        // broadcast to all stopped readers the fact that the queue is going to be deleted
-        NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
-            errToSet = E_SQ_MUTEX_LOCK;
-        })
-
-        if (hasQueueLock && !errToSet)
+        if (queue_data->active_utilizers > 0) // <-----
         {
-            hasQueueLock = 0;
-            NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)),
-                        {
-                            errToSet = E_SQ_MUTEX_LOCK;
-                            hasQueueLock = 1;
-                        })
+            // broadcast to all stopped readers the fact that the queue is going to be deleted
+            NON_ZERO_DO(pthread_cond_broadcast(&(queue_data)->read_cond), {
+                errToSet = E_SQ_MUTEX_LOCK;
+            })
         }
-    }
 
-    if (pmd_res != 0)
-    {
-        errToSet = E_SQ_MUTEX_LOCK;
+        while (!errToSet && queue_data->active_utilizers > 0) // <-----
+        {
+            NON_ZERO_DO(pthread_cond_wait(&(queue_data->wait_no_utilizers), &(queue_data->lock)), {
+                errToSet = E_SQ_MUTEX_COND;
+            })
+        }
     }
 
     if (errToSet != E_SQ_NO_QUEUE && errToSet != E_SQ_QUEUE_DELETED)
@@ -464,7 +438,6 @@ void SimpleQueue_delete(SimpleQueue *queuePtr, int *error)
         List_free(&(*queuePtr)->queue);
         free(*queuePtr);
         *queuePtr = NULL;
-        fflush(stdout);
     }
 
     if (hasDictLock)
@@ -561,6 +534,7 @@ void SimpleQueue_enqueue(SimpleQueue queue, void *element, int *error)
 
     if (hasQueueLock)
     {
+
         NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
             errToSet = E_SQ_MUTEX_LOCK;
         })
@@ -623,6 +597,11 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
                         errToSet = E_SQ_MUTEX_LOCK;
                         hasQueueLock = 0;
                     })
+
+        if (!errToSet) // <-----
+        {
+            queue_data->active_utilizers++;
+        }
     }
 
     if (hasDictLock)
@@ -662,6 +641,14 @@ void *SimpleQueue_dequeue(SimpleQueue queue, int wait, int *error)
 
     if (hasQueueLock)
     {
+        queue_data->active_utilizers--;        // <-----
+        if (queue_data->active_utilizers == 0) // <-----
+        {
+            NON_ZERO_DO(pthread_cond_signal(&(queue_data->wait_no_utilizers)), {
+                errToSet = E_SQ_MUTEX_COND;
+            })
+        }
+
         NON_ZERO_DO(pthread_mutex_unlock(&(queue_data->lock)), {
             errToSet = E_SQ_MUTEX_LOCK;
         })
